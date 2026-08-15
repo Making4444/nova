@@ -1,0 +1,20 @@
+# Environment variables and secrets
+.env
+
+# Runtime data & session files
+data/
+
+# Binary executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+novabot
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
