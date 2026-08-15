@@ -184,7 +184,7 @@ def import_to_jsonl(txt_path: str, output_jsonl_path: str, cutoff_old_tests: boo
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="تحويل سجل دردشة واتساب إلى JSONL لبوت نوفا")
     parser.add_argument('--input', '-i', default="files/‏دردشة في واتساب مع جروب هنسميه بعدين.txt", help="مسار ملف الدردشة txt")
-    parser.add_argument('--output', '-o', default="data/chats/groups/default_group.jsonl", help="مسار ملف JSONL المستهدف")
+    parser.add_argument('--output', '-o', default="", help="مسار ملف JSONL المستهدف (لو ترك فارغاً سيبحث تلقائياً عن جروب واتساب الفعلي)")
     parser.add_argument('--include-all', action='store_true', help="تضمين حتى الرسائل التجريبية القديمة لبوت نوفا")
 
     args = parser.parse_args()
@@ -199,4 +199,17 @@ if __name__ == '__main__':
                     input_file = os.path.join(files_dir, fname)
                     break
 
-    import_to_jsonl(input_file, args.output, cutoff_old_tests=(not args.include_all))
+    output_file = args.output
+    if not output_file:
+        # البحث التلقائي عن أي ملف جروب واتساب فعلي موجود في data/chats/groups
+        groups_dir = os.path.join("data", "chats", "groups")
+        if os.path.exists(groups_dir):
+            group_files = [f for f in os.listdir(groups_dir) if f.endswith("@g.us.jsonl")]
+            if group_files:
+                output_file = os.path.join(groups_dir, group_files[0])
+                print(f"[🔍] تم اكتشاف ملف الجروب الفعلي تلقائياً: {output_file}")
+
+        if not output_file:
+            output_file = os.path.join("data", "chats", "groups", "default_group.jsonl")
+
+    import_to_jsonl(input_file, output_file, cutoff_old_tests=(not args.include_all))
