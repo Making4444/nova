@@ -11,7 +11,7 @@ data/
 *.so
 *.dylib
 bin/
-novabot
+/novabot
 
 # OS and IDE files
 .DS_Store
