@@ -95,3 +95,44 @@ func TestBuildReplyMessage(t *testing.T) {
 		t.Errorf("unexpected stanza ID: %q", reply.GetExtendedTextMessage().GetContextInfo().GetStanzaID())
 	}
 }
+
+func TestExtractDownloadableMedia(t *testing.T) {
+	// 1. Direct Image
+	imgMsg := &waE2E.Message{
+		ImageMessage: &waE2E.ImageMessage{
+			Mimetype: proto.String("image/png"),
+		},
+	}
+	dl, mime := ExtractDownloadableMedia(imgMsg)
+	if dl == nil || mime != "image/png" {
+		t.Errorf("expected direct image downloadable, got dl=%v, mime=%s", dl, mime)
+	}
+
+	// 2. Reply on Quoted Image
+	quotedImg := &waE2E.Message{
+		ImageMessage: &waE2E.ImageMessage{
+			Mimetype: proto.String("image/jpeg"),
+		},
+	}
+	replyMsg := &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String("يا نوفا شوفي دي"),
+			ContextInfo: &waE2E.ContextInfo{
+				QuotedMessage: quotedImg,
+			},
+		},
+	}
+	dl, mime = ExtractDownloadableMedia(replyMsg)
+	if dl == nil || mime != "image/jpeg" {
+		t.Errorf("expected quoted image downloadable, got dl=%v, mime=%s", dl, mime)
+	}
+
+	// 3. Text only
+	plainMsg := &waE2E.Message{
+		Conversation: proto.String("نص عادي بدون وسائط"),
+	}
+	dl, _ = ExtractDownloadableMedia(plainMsg)
+	if dl != nil {
+		t.Errorf("expected nil downloadable for plain message")
+	}
+}

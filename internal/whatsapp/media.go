@@ -1,6 +1,12 @@
 package whatsapp
 
 import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"strings"
+
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
 )
@@ -89,6 +95,93 @@ func ExtractTextAndReply(msg *waE2E.Message) (text string, isReply bool, replied
 	}
 
 	return text, isReply, repliedID, repliedSender, repliedText
+}
+
+// ExtractDownloadableMedia finds any downloadable image or document in the direct or quoted message.
+func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage, string) {
+	if msg == nil {
+		return nil, ""
+	}
+
+	// 1. Direct message media
+	if img := msg.GetImageMessage(); img != nil {
+		mime := img.GetMimetype()
+		if mime == "" {
+			mime = "image/jpeg"
+		}
+		return img, mime
+	}
+
+	if doc := msg.GetDocumentMessage(); doc != nil {
+		mime := doc.GetMimetype()
+		if mime == "" {
+			mime = "application/pdf"
+		}
+		return doc, mime
+	}
+
+	// 2. Quoted message media (when user replies to an earlier image or PDF)
+	var ctxInfo *waE2E.ContextInfo
+	switch {
+	case msg.ExtendedTextMessage != nil:
+		ctxInfo = msg.GetExtendedTextMessage().GetContextInfo()
+	case msg.ImageMessage != nil:
+		ctxInfo = msg.GetImageMessage().GetContextInfo()
+	case msg.VideoMessage != nil:
+		ctxInfo = msg.GetVideoMessage().GetContextInfo()
+	case msg.DocumentMessage != nil:
+		ctxInfo = msg.GetDocumentMessage().GetContextInfo()
+	}
+
+	if ctxInfo != nil && ctxInfo.GetQuotedMessage() != nil {
+		quoted := ctxInfo.GetQuotedMessage()
+		if img := quoted.GetImageMessage(); img != nil {
+			mime := img.GetMimetype()
+			if mime == "" {
+				mime = "image/jpeg"
+			}
+			return img, mime
+		}
+		if doc := quoted.GetDocumentMessage(); doc != nil {
+			mime := doc.GetMimetype()
+			if mime == "" {
+				mime = "application/pdf"
+			}
+			return doc, mime
+		}
+	}
+
+	return nil, ""
+}
+
+// DownloadMediaAsBase64 downloads media (direct or from quoted reply) and formats it as a base64 Data URL.
+func DownloadMediaAsBase64(ctx context.Context, cli *whatsmeow.Client, msg *waE2E.Message) (*string, error) {
+	downloadable, mimeType := ExtractDownloadableMedia(msg)
+	if downloadable == nil || cli == nil {
+		return nil, nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	data, err := cli.Download(ctx, downloadable)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download whatsapp media: %w", err)
+	}
+
+	// Cap at 10MB to avoid excessive token / payload sizes
+	if len(data) > 10*1024*1024 {
+		return nil, fmt.Errorf("media size (%d bytes) exceeds 10MB limit", len(data))
+	}
+
+	// Clean MIME type (strip params like '; codecs=...' if any)
+	if idx := strings.Index(mimeType, ";"); idx != -1 {
+		mimeType = strings.TrimSpace(mimeType[:idx])
+	}
+
+	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data))
+	return &dataURL, nil
 }
 
 // BuildReplyMessage creates a message proto quoting a target message ID and participant.

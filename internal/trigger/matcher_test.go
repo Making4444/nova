@@ -104,6 +104,7 @@ func TestBuildContext(t *testing.T) {
 		"يا نوفا ازيك",
 		false,
 		nil,
+		nil,
 		5,
 	)
 	if err != nil {

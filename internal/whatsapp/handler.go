@@ -170,7 +170,17 @@ func (h *EventHandler) processTrigger(
 		}
 	}
 
-	// 5. Build full context payload for the AI
+	// 5. Download media (images, PDFs) from direct message or quoted reply if present
+	downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, h.waClient.WAClient, evt.Message)
+	downloadCancel()
+	if mediaErr != nil {
+		h.logger.Warnf("Could not download media for message %s: %v", messageID, mediaErr)
+	} else if mediaDataURL != nil {
+		h.logger.Infof("Successfully downloaded and attached media for message %s", messageID)
+	}
+
+	// 6. Build full context payload for the AI
 	payload, err := trigger.BuildContext(
 		h.chatLogger,
 		h.memStore,
@@ -183,6 +193,7 @@ func (h *EventHandler) processTrigger(
 		text,
 		isReply,
 		repliedTo,
+		mediaDataURL,
 		h.historyLimit,
 	)
 	if err != nil {
@@ -190,8 +201,8 @@ func (h *EventHandler) processTrigger(
 		return
 	}
 
-	// 6. Call OpenRouter AI
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// 7. Call OpenRouter AI
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
 
 	h.logger.Infof("Trigger matched in chat %s by %s, generating AI response...", chatID, senderName)
