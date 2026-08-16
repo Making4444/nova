@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -10,22 +11,32 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
+	"novabot/internal/admin"
 	"novabot/internal/ai"
 	"novabot/internal/storage"
 	"novabot/internal/trigger"
 )
 
-// EventHandler coordinates incoming WhatsApp messages, logging, triggers, and AI replies.
+// SchedulerEngineInterface defines methods expected from the scheduler.
+type SchedulerEngineInterface interface {
+	RecordIncomingMessageForRush(chatID string)
+	TriggerNewMemberJoined(chatID, newMemberName string)
+}
+
+// EventHandler coordinates incoming WhatsApp messages, logging, triggers, admin commands, and AI replies.
 type EventHandler struct {
-	waClient     *Client
-	aiClient     *ai.OpenRouterClient
-	chatLogger   *storage.ChatLogger
-	memStore     *storage.MemoryStore
-	limiter      *trigger.ChatLimiter
-	historyLimit int
-	logger       waLog.Logger
-	novaMsgMu    sync.RWMutex
-	novaMsgIDs   map[string]time.Time
+	waClient        *Client
+	aiClient        *ai.OpenRouterClient
+	chatLogger      *storage.ChatLogger
+	memStore        *storage.MemoryStore
+	adminState      *admin.State
+	schedulerEngine SchedulerEngineInterface
+	statsProvider   admin.StatsProvider
+	limiter         *trigger.ChatLimiter
+	historyLimit    int
+	logger          waLog.Logger
+	novaMsgMu       sync.RWMutex
+	novaMsgIDs      map[string]time.Time
 }
 
 // NewEventHandler creates a new EventHandler instance.
@@ -34,6 +45,7 @@ func NewEventHandler(
 	aiClient *ai.OpenRouterClient,
 	chatLogger *storage.ChatLogger,
 	memStore *storage.MemoryStore,
+	adminState *admin.State,
 	limiter *trigger.ChatLimiter,
 	historyLimit int,
 	logger waLog.Logger,
@@ -43,11 +55,22 @@ func NewEventHandler(
 		aiClient:     aiClient,
 		chatLogger:   chatLogger,
 		memStore:     memStore,
+		adminState:   adminState,
 		limiter:      limiter,
 		historyLimit: historyLimit,
 		logger:       logger,
 		novaMsgIDs:   make(map[string]time.Time),
 	}
+}
+
+// SetSchedulerEngine attaches the scheduler engine.
+func (h *EventHandler) SetSchedulerEngine(eng SchedulerEngineInterface) {
+	h.schedulerEngine = eng
+}
+
+// SetStatsProvider attaches stats metrics provider for /status command.
+func (h *EventHandler) SetStatsProvider(stats admin.StatsProvider) {
+	h.statsProvider = stats
 }
 
 func (h *EventHandler) markAsNovaSent(msgID string) {
@@ -77,41 +100,80 @@ func (h *EventHandler) isNovaSent(msgID string) bool {
 	return exists
 }
 
-// HandleEvent handles all raw whatsmeow events and routes Message events.
-func (h *EventHandler) HandleEvent(rawEvt interface{}) {
-	evt, ok := rawEvt.(*events.Message)
-	if !ok || evt == nil || evt.Message == nil {
-		return
+// SendMessage sends a message to WhatsApp and records it in chat log.
+func (h *EventHandler) SendMessage(ctx context.Context, chatID string, text string, replyToID string) error {
+	targetJID, err := types.ParseJID(chatID)
+	if err != nil {
+		return fmt.Errorf("invalid chat JID: %w", err)
 	}
 
-	// Ignore WhatsApp status broadcasts
-	if evt.Info.Chat == types.StatusBroadcastJID {
-		return
+	sentID, err := h.waClient.SendReply(ctx, targetJID, text, replyToID, "")
+	if err != nil {
+		return err
 	}
 
-	messageID := evt.Info.ID
+	h.markAsNovaSent(string(sentID))
 
-	// If this message was sent by the Nova bot itself, skip processing to avoid loops
-	if h.isNovaSent(messageID) {
-		return
-	}
-
-	// 1. Determine chat details
 	chatType := "private"
-	if evt.Info.IsGroup || strings.Contains(evt.Info.Chat.String(), "@g.us") {
+	if strings.Contains(chatID, "@g.us") {
 		chatType = "group"
 	}
-	chatID := evt.Info.Chat.ToNonAD().String()
+
+	novaLog := storage.LogMessage{
+		MessageID:   string(sentID),
+		SenderID:    h.waClient.GetUserJID().ToNonAD().String(),
+		SenderName:  "Nova",
+		Text:        text,
+		IsNova:      true,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		IsReply:     replyToID != "",
+		RepliedToID: replyToID,
+	}
+	_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+	return nil
+}
+
+// HandleEvent is the main entry point called by whatsmeow for all WhatsApp events.
+func (h *EventHandler) HandleEvent(rawEvt interface{}) {
+	switch evt := rawEvt.(type) {
+	case *events.Message:
+		h.handleMessageEvent(evt)
+	case *events.GroupInfo:
+		if h.schedulerEngine != nil && len(evt.Join) > 0 {
+			chatID := evt.JID.String()
+			for _, userJID := range evt.Join {
+				h.schedulerEngine.TriggerNewMemberJoined(chatID, userJID.User)
+			}
+		}
+	}
+}
+
+func (h *EventHandler) handleMessageEvent(evt *events.Message) {
+	// 1. Loop Protection: Ignore messages sent by Nova's bot process
+	if h.isNovaSent(evt.Info.ID) {
+		return
+	}
+
+	// Extract message data
+	text, isReply, repliedMsgID, repliedSender, repliedText := ExtractTextAndReply(evt.Message)
+	if text == "" {
+		return
+	}
+
+	chatID := evt.Info.Chat.String()
 	senderID := evt.Info.Sender.ToNonAD().String()
 	senderName := evt.Info.PushName
 	if senderName == "" {
 		senderName = evt.Info.Sender.User
 	}
+	messageID := evt.Info.ID
 
-	// Extract message text / caption and reply info safely
-	text, isReply, repliedMsgID, repliedSender, repliedText := ExtractTextAndReply(evt.Message)
+	chatType := "private"
+	if evt.Info.IsGroup {
+		chatType = "group"
+	}
 
-	// 2. Rule 2: Local recording of every incoming/outgoing message in its chat log
+	// 2. Rule 7: Record EVERY incoming message in the JSONL chat log first
 	logEntry := storage.LogMessage{
 		MessageID:   messageID,
 		SenderID:    senderID,
@@ -124,35 +186,44 @@ func (h *EventHandler) HandleEvent(rawEvt interface{}) {
 	}
 
 	if err := h.chatLogger.AppendMessage(chatType, chatID, logEntry); err != nil {
-		h.logger.Errorf("Failed to log message in chat %s: %v", chatID, err)
+		h.logger.Errorf("Failed to log message %s in chat %s: %v", messageID, chatID, err)
 	}
 
-	// 3. Rule 3: Trigger Matching (Check "يا نوفا" in text or in replied-to message)
+	// 3. Admin Command Check (Exclusive for admin number)
+	if h.adminState != nil && strings.HasPrefix(strings.TrimSpace(text), "/") {
+		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, text, h.statsProvider)
+		if cmdRes.Handled {
+			h.logger.Infof("Admin command executed by %s: %s", senderID, text)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_ = h.SendMessage(ctx, chatID, cmdRes.ReplyText, messageID)
+			cancel()
+			return
+		}
+	}
+
+	// Feed message to rush tracker for Trigger 3
+	if h.schedulerEngine != nil && evt.Info.IsGroup {
+		h.schedulerEngine.RecordIncomingMessageForRush(chatID)
+	}
+
+	// 4. Trigger Matching ("يا نوفا" in text or reply)
 	triggerMatched := trigger.CheckTrigger(text, isReply, repliedText)
 	if !triggerMatched {
 		return
 	}
 
-	// Process matched trigger asynchronously to avoid blocking the event loop
-	go h.processTrigger(evt, chatType, chatID, senderID, senderName, messageID, text, isReply, repliedMsgID, repliedSender, repliedText)
-}
+	// 5. Shutdown Mode Check
+	if h.adminState != nil && h.adminState.GetShutdown() {
+		h.logger.Infof("Server is in shutdown mode, sending maintenance notice to %s", chatID)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		_ = h.SendMessage(ctx, chatID, "عذراً، تم إغلاق السيرفرات مؤقتاً. يمكنك التواصل مع الأدمن لفتح السيرفرات مرة أخرى.", messageID)
+		cancel()
+		return
+	}
 
-func (h *EventHandler) processTrigger(
-	evt *events.Message,
-	chatType string,
-	chatID string,
-	senderID string,
-	senderName string,
-	messageID string,
-	text string,
-	isReply bool,
-	repliedMsgID string,
-	repliedSender string,
-	repliedText string,
-) {
-	// 4. Rate Limiter / Cooldown check per chat
+	// 6. Rate Limiter / Cooldown check per chat
 	if !h.limiter.Allow(chatID) {
-		h.logger.Infof("Rate limiter / cooldown active for chat %s, skipping trigger", chatID)
+		h.logger.Infof("Rate limiter active for chat %s, skipping trigger", chatID)
 		return
 	}
 
@@ -170,7 +241,7 @@ func (h *EventHandler) processTrigger(
 		}
 	}
 
-	// 5. Download media (images, PDFs) from direct message or quoted reply if present
+	// Download media (images, PDFs) from direct message or quoted reply if present
 	downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, h.waClient.WAClient, evt.Message)
 	downloadCancel()
@@ -180,7 +251,13 @@ func (h *EventHandler) processTrigger(
 		h.logger.Infof("Successfully downloaded and attached media for message %s", messageID)
 	}
 
-	// 6. Build full context payload for the AI
+	// Dynamic history limit from admin state or default
+	effectiveHistoryLimit := h.historyLimit
+	if h.adminState != nil {
+		effectiveHistoryLimit = h.adminState.GetChatLimit(chatID, h.historyLimit)
+	}
+
+	// 7. Build full context payload for the AI
 	payload, err := trigger.BuildContext(
 		h.chatLogger,
 		h.memStore,
@@ -194,14 +271,14 @@ func (h *EventHandler) processTrigger(
 		isReply,
 		repliedTo,
 		mediaDataURL,
-		h.historyLimit,
+		effectiveHistoryLimit,
 	)
 	if err != nil {
 		h.logger.Errorf("Failed to build AI context for message %s: %v", messageID, err)
 		return
 	}
 
-	// 7. Call OpenRouter AI
+	// 8. Call OpenRouter AI
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
 
@@ -212,7 +289,7 @@ func (h *EventHandler) processTrigger(
 		return
 	}
 
-	// 7. Rule 9: If model returns should_reply: false, do not send anything
+	// 9. Rule 9: If model returns should_reply: false, do not send anything
 	if !aiResp.ShouldReply {
 		h.logger.Infof("AI decided not to reply (should_reply: false) for message %s", messageID)
 		return
@@ -229,19 +306,17 @@ func (h *EventHandler) processTrigger(
 		targetMsgID = *aiResp.ReplyToMessageID
 	}
 
-	// 8. Rule 6: Send WhatsApp Reply (Quote)
+	// 10. Send WhatsApp Reply (Quote)
 	sentMsgID, err := h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String())
 	if err != nil {
 		h.logger.Errorf("Failed to send WhatsApp reply for message %s: %v", messageID, err)
 		return
 	}
 
-	// Mark sent message ID as generated by Nova so the bot doesn't reply to itself
 	h.markAsNovaSent(string(sentMsgID))
-
 	h.logger.Infof("Nova replied successfully to message %s (Sent ID: %s)", targetMsgID, sentMsgID)
 
-	// 9. Rule 7: Record Nova's response in chat log with SenderName: "Nova" and IsNova: true
+	// Record Nova's response in chat log
 	novaLog := storage.LogMessage{
 		MessageID:   string(sentMsgID),
 		SenderID:    h.waClient.GetUserJID().ToNonAD().String(),
@@ -252,11 +327,9 @@ func (h *EventHandler) processTrigger(
 		IsReply:     true,
 		RepliedToID: targetMsgID,
 	}
-	if err := h.chatLogger.AppendMessage(chatType, chatID, novaLog); err != nil {
-		h.logger.Errorf("Failed to log Nova's sent reply in chat %s: %v", chatID, err)
-	}
+	_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
 
-	// 10. Rule 8 & 10: Save memory note if returned by AI
+	// Save memory note if returned by AI
 	if aiResp.MemoryNote != nil && strings.TrimSpace(*aiResp.MemoryNote) != "" {
 		if err := h.memStore.AppendMemoryNote(senderID, senderName, *aiResp.MemoryNote); err != nil {
 			h.logger.Errorf("Failed to save memory note for user %s: %v", senderID, err)

@@ -18,15 +18,21 @@ import (
 const (
 	openRouterAPIURL = "https://openrouter.ai/api/v1/chat/completions"
 	maxFailures      = 3
-	maxToolSteps     = 3
+	maxToolSteps     = 4
 )
 
-// OpenRouterClient interacts with OpenRouter API to generate Nova responses with Search and Vision capabilities.
+// TaskScheduler represents an engine that can schedule future autonomous messages.
+type TaskScheduler interface {
+	ScheduleTask(chatID, chatType, targetUser, reason, durationStr string) string
+}
+
+// OpenRouterClient interacts with OpenRouter API to generate Nova responses with Search, Scheduler, and Vision capabilities.
 type OpenRouterClient struct {
 	apiKey              string
 	model               string
 	systemPrompt        string
 	searchEngine        *SearchEngine
+	scheduler           TaskScheduler
 	httpClient          *http.Client
 	mu                  sync.Mutex
 	consecutiveFailures int
@@ -43,6 +49,13 @@ func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
 			Timeout: 60 * time.Second,
 		},
 	}
+}
+
+// SetScheduler attaches a task scheduler instance to the AI client.
+func (c *OpenRouterClient) SetScheduler(scheduler TaskScheduler) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.scheduler = scheduler
 }
 
 type openRouterMessage struct {
@@ -74,8 +87,8 @@ type toolFunction struct {
 }
 
 type toolDefinition struct {
-	Type     string           `json:"type"`
-	Function functionDef      `json:"function"`
+	Type     string      `json:"type"`
+	Function functionDef `json:"function"`
 }
 
 type functionDef struct {
@@ -102,6 +115,32 @@ var webSearchTool = toolDefinition{
 	},
 }
 
+var scheduleFollowupTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "schedule_followup",
+		Description: "جدولة موعد لاحق لتقوم نوفا بالرجوع والتحدث في الشات بعد فترة زمنية معينة (ساعة، ساعتين، بكرة، إلخ)",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"duration": map[string]interface{}{
+					"type":        "string",
+					"description": "المدة الزمنية للرجوع، مثلاً: '1h', '2h', '30m', '1d', 'ساعتين'",
+				},
+				"reason": map[string]interface{}{
+					"type":        "string",
+					"description": "السبب أو سياق المتابعة (مثلاً: 'اسأل مكاري عمل ايه عند الدكتور')",
+				},
+				"target_user": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم أو معرف الشخص المستهدف بالسؤال (اختياري)",
+				},
+			},
+			"required": []string{"duration", "reason"},
+		},
+	},
+}
+
 type openRouterRequest struct {
 	Model    string              `json:"model"`
 	Messages []openRouterMessage `json:"messages"`
@@ -120,7 +159,7 @@ type openRouterResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// GenerateResponse sends the payload to OpenRouter, executes tool calls (e.g. web_search), and parses the final JSON response.
+// GenerateResponse sends the payload to OpenRouter, executes tool calls, and parses the final JSON response.
 func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigger.RequestPayload) (*ResponsePayload, error) {
 	if c.apiKey == "" {
 		return nil, errors.New("OPENROUTER_API_KEY is not set")
@@ -161,7 +200,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	// 1. Execute initial attempt with Tool Calling loop
-	rawResp, err := c.executeConversation(ctx, messages)
+	rawResp, err := c.executeConversation(ctx, messages, payload)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("openrouter request failed: %w", err)
@@ -182,7 +221,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		},
 	)
 
-	rawRetryResp, retryErr := c.executeConversation(ctx, retryMessages)
+	rawRetryResp, retryErr := c.executeConversation(ctx, retryMessages, payload)
 	if retryErr != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("retry openrouter request failed: %w", retryErr)
@@ -198,8 +237,8 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	return parsedRetry, nil
 }
 
-// executeConversation executes the message list, handling any tool calls (web_search) up to maxToolSteps.
-func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []openRouterMessage) (string, error) {
+// executeConversation executes the message list, handling any tool calls (web_search, schedule_followup).
+func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []openRouterMessage, payload *trigger.RequestPayload) (string, error) {
 	currentMessages := make([]openRouterMessage, len(messages))
 	copy(currentMessages, messages)
 
@@ -221,7 +260,8 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 		currentMessages = append(currentMessages, choiceMsg)
 
 		for _, call := range choiceMsg.ToolCalls {
-			if call.Function.Name == "web_search" {
+			switch call.Function.Name {
+			case "web_search":
 				var args struct {
 					Query string `json:"query"`
 				}
@@ -232,15 +272,49 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 					query = call.Function.Arguments
 				}
 
+				fmt.Printf("\n[🔍 Web Search] Query: %q\n", query)
 				searchResult, searchErr := c.searchEngine.Search(ctx, query)
 				if searchErr != nil {
+					fmt.Printf("[⚠️ Web Search] Error: %v\n", searchErr)
 					searchResult = fmt.Sprintf("فشل البحث على الإنترنت: %v", searchErr)
+				} else {
+					fmt.Printf("[✅ Web Search] Success: Perplexity returned %d chars\n", len(searchResult))
 				}
 
 				currentMessages = append(currentMessages, openRouterMessage{
 					Role:       "tool",
 					ToolCallID: call.ID,
 					Content:    searchResult,
+				})
+
+			case "schedule_followup":
+				var args struct {
+					Duration   string `json:"duration"`
+					Reason     string `json:"reason"`
+					TargetUser string `json:"target_user"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+
+				fmt.Printf("\n[⏰ Scheduler Tool] Nova scheduled follow-up: duration=%q, reason=%q, user=%q\n", args.Duration, args.Reason, args.TargetUser)
+
+				toolResult := "تم تسجيل المتابعة المجدولة في السيرفر بنجاح وسيتم تذكيرك بها."
+				c.mu.Lock()
+				sch := c.scheduler
+				c.mu.Unlock()
+
+				if sch != nil && payload != nil {
+					target := args.TargetUser
+					if target == "" {
+						target = payload.SenderName
+					}
+					taskID := sch.ScheduleTask(payload.ChatID, payload.ChatType, target, args.Reason, args.Duration)
+					toolResult = fmt.Sprintf("تمت جدولة المهمة برقم %s للمتابعة بعد %s", taskID, args.Duration)
+				}
+
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    toolResult,
 				})
 			}
 		}
@@ -253,7 +327,7 @@ func (c *OpenRouterClient) callAPI(ctx context.Context, messages []openRouterMes
 	reqBody := openRouterRequest{
 		Model:    c.model,
 		Messages: messages,
-		Tools:    []toolDefinition{webSearchTool},
+		Tools:    []toolDefinition{webSearchTool, scheduleFollowupTool},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

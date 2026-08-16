@@ -9,8 +9,10 @@ import (
 
 	waLog "go.mau.fi/whatsmeow/util/log"
 
+	"novabot/internal/admin"
 	"novabot/internal/ai"
 	"novabot/internal/config"
+	"novabot/internal/scheduler"
 	"novabot/internal/storage"
 	"novabot/internal/trigger"
 	"novabot/internal/whatsapp"
@@ -21,6 +23,39 @@ const banner = `
   🌟 Nova WhatsApp Bot (نوفا - بوت واتساب الذكي) 🌟
 ===========================================================
 `
+
+type botStats struct {
+	modelName string
+	scheduler *scheduler.Engine
+}
+
+func (s *botStats) GetTotalChatsCount() int {
+	count := 0
+	for _, sub := range []string{"data/chats/groups", "data/chats/private"} {
+		if files, err := os.ReadDir(sub); err == nil {
+			count += len(files)
+		}
+	}
+	return count
+}
+
+func (s *botStats) GetMemoryProfilesCount() int {
+	if files, err := os.ReadDir("data/users"); err == nil {
+		return len(files)
+	}
+	return 0
+}
+
+func (s *botStats) GetScheduledTasksCount() int {
+	if s.scheduler != nil {
+		return s.scheduler.GetScheduledTasksCount()
+	}
+	return 0
+}
+
+func (s *botStats) GetModelName() string {
+	return s.modelName
+}
 
 func main() {
 	fmt.Print(banner)
@@ -45,7 +80,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 2. Initialize storage components
+	// 2. Initialize storage components and Admin State
 	chatLogger, err := storage.NewChatLogger("data/chats")
 	if err != nil {
 		logger.Errorf("Failed to initialize chat logger: %v", err)
@@ -55,6 +90,12 @@ func main() {
 	memStore, err := storage.NewMemoryStore("data/users")
 	if err != nil {
 		logger.Errorf("Failed to initialize memory store: %v", err)
+		os.Exit(1)
+	}
+
+	adminState, err := admin.NewState("data", "201202172699")
+	if err != nil {
+		logger.Errorf("Failed to initialize admin state: %v", err)
 		os.Exit(1)
 	}
 
@@ -81,13 +122,36 @@ func main() {
 		aiClient,
 		chatLogger,
 		memStore,
+		adminState,
 		limiter,
 		cfg.ContextHistoryLimit,
 		logger,
 	)
+
+	// 6. Initialize Scheduler Engine & wire dependencies
+	schedulerEngine := scheduler.NewEngine(
+		"data",
+		adminState,
+		chatLogger,
+		memStore,
+		eventHandler,
+		aiClient,
+	)
+	aiClient.SetScheduler(schedulerEngine)
+	eventHandler.SetSchedulerEngine(schedulerEngine)
+
+	stats := &botStats{
+		modelName: cfg.OpenRouterModel,
+		scheduler: schedulerEngine,
+	}
+	eventHandler.SetStatsProvider(stats)
+
+	schedulerEngine.Start()
+	defer schedulerEngine.Stop()
+
 	waClient.AddEventHandler(eventHandler.HandleEvent)
 
-	// 6. Connect to WhatsApp (Generates QR if not authenticated)
+	// 7. Connect to WhatsApp (Generates QR if not authenticated)
 	if err := waClient.Connect(ctx); err != nil {
 		logger.Errorf("Failed to connect: %v", err)
 		os.Exit(1)
@@ -95,9 +159,10 @@ func main() {
 
 	fmt.Println("\n🚀 بوت نوفا قيد التشغيل والاستماع للرسائل الآن...")
 	fmt.Println("💡 التريجر النشط: \"يا نوفا\" (في النص المباشر أو الـ Reply)")
+	fmt.Println("👑 أوامر الأدمن المتاحة: /shutdown, /start, /set <limit>, /auto <on|off>, /status")
 	fmt.Println("⏹️  اضغط Ctrl+C للإيقاف الآمن.")
 
-	// 7. Wait for interrupt signal for graceful shutdown
+	// 8. Wait for interrupt signal for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan

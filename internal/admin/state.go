@@ -1,0 +1,166 @@
+package admin
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+)
+
+// State holds the persistent configuration and runtime state.
+type State struct {
+	IsShutdown          bool            `json:"is_shutdown"`
+	ChatLimits          map[string]int  `json:"chat_limits"`           // chatID -> history limit (0 = all)
+	AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"` // chatID -> bool
+	AdminNumber         string          `json:"admin_number"`          // e.g. "201202172699"
+	StartTime           time.Time       `json:"start_time"`
+	filePath            string
+	mu                  sync.RWMutex
+}
+
+// NewState initializes or loads persistent state from data/settings.json.
+func NewState(dataDir string, adminNumber string) (*State, error) {
+	if adminNumber == "" {
+		adminNumber = "201202172699"
+	}
+
+	settingsPath := filepath.Join(dataDir, "settings.json")
+	st := &State{
+		IsShutdown:          false,
+		ChatLimits:          make(map[string]int),
+		AutoTriggersEnabled: make(map[string]bool),
+		AdminNumber:         adminNumber,
+		StartTime:           time.Now(),
+		filePath:            settingsPath,
+	}
+
+	// Try reading existing settings
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		var loaded struct {
+			IsShutdown          bool            `json:"is_shutdown"`
+			ChatLimits          map[string]int  `json:"chat_limits"`
+			AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"`
+		}
+		if err := json.Unmarshal(data, &loaded); err == nil {
+			st.IsShutdown = loaded.IsShutdown
+			if loaded.ChatLimits != nil {
+				st.ChatLimits = loaded.ChatLimits
+			}
+			if loaded.AutoTriggersEnabled != nil {
+				st.AutoTriggersEnabled = loaded.AutoTriggersEnabled
+			}
+		}
+	}
+
+	return st, nil
+}
+
+func (s *State) save() error {
+	_ = os.MkdirAll(filepath.Dir(s.filePath), 0755)
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.filePath, data, 0644)
+}
+
+// IsAdmin checks if sender JID/Phone matches the admin number.
+func (s *State) IsAdmin(senderID string) bool {
+	cleanSender := strings.TrimSuffix(senderID, "@s.whatsapp.net")
+	cleanSender = strings.TrimSuffix(cleanSender, "@c.us")
+	cleanSender = strings.TrimPrefix(cleanSender, "+")
+	cleanSender = strings.TrimSpace(cleanSender)
+
+	cleanAdmin := strings.TrimPrefix(s.AdminNumber, "+")
+	cleanAdmin = strings.TrimSpace(cleanAdmin)
+
+	// Direct match or 01... vs 201... match
+	if cleanSender == cleanAdmin {
+		return true
+	}
+	if strings.HasPrefix(cleanAdmin, "20") && cleanSender == "0"+cleanAdmin[2:] {
+		return true
+	}
+	if strings.HasPrefix(cleanSender, "20") && cleanAdmin == "0"+cleanSender[2:] {
+		return true
+	}
+	return false
+}
+
+// SetShutdown toggles or sets the shutdown mode.
+func (s *State) SetShutdown(val bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.IsShutdown = val
+	return s.save()
+}
+
+// GetShutdown returns current shutdown status.
+func (s *State) GetShutdown() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.IsShutdown
+}
+
+// SetChatLimit sets message history limit for a specific chat.
+func (s *State) SetChatLimit(chatID string, limit int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ChatLimits[chatID] = limit
+	return s.save()
+}
+
+// GetChatLimit returns limit for chat or fallback.
+func (s *State) GetChatLimit(chatID string, defaultLimit int) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if limit, exists := s.ChatLimits[chatID]; exists {
+		return limit
+	}
+	return defaultLimit
+}
+
+// SetAutoTriggers enables or disables automated triggers for a specific chat.
+func (s *State) SetAutoTriggers(chatID string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.AutoTriggersEnabled[chatID] = enabled
+	return s.save()
+}
+
+// IsAutoTriggersEnabled checks if automated triggers are on for a chat.
+func (s *State) IsAutoTriggersEnabled(chatID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.AutoTriggersEnabled[chatID]
+}
+
+// GetActiveAutoChats returns list of chatIDs with auto triggers enabled.
+func (s *State) GetActiveAutoChats() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]string, 0, len(s.AutoTriggersEnabled))
+	for chatID, enabled := range s.AutoTriggersEnabled {
+		if enabled {
+			res = append(res, chatID)
+		}
+	}
+	return res
+}
+
+// GetUptimeString returns human readable uptime.
+func (s *State) GetUptimeString() string {
+	d := time.Since(s.StartTime)
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+	if hours > 24 {
+		days := hours / 24
+		hours = hours % 24
+		return fmt.Sprintf("%d يوم و %d ساعة و %d دقيقة", days, hours, minutes)
+	}
+	return fmt.Sprintf("%d ساعة و %d دقيقة و %d ثانية", hours, minutes, seconds)
+}
