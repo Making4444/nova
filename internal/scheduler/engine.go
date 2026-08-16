@@ -237,10 +237,16 @@ func (e *Engine) executeTask(task ScheduledTask) {
 	_ = e.dispatcher.SendMessage(ctx, task.ChatID, *resp.ReplyText, "")
 }
 
-// RecordIncomingMessageForRush tracks message rate for Trigger 3 (Rush burst).
-func (e *Engine) RecordIncomingMessageForRush(chatID string) {
+// RecordIncomingMessageForRush tracks message rate for Trigger 3 (Rush burst) with safety checks.
+func (e *Engine) RecordIncomingMessageForRush(chatID string, wasTriggerMatched bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	// Safety: If Nova was called in this message, reset rush count because Nova is now actively involved!
+	if wasTriggerMatched {
+		e.recentRushCounts[chatID] = nil
+		return
+	}
 
 	now := time.Now()
 	timestamps := e.recentRushCounts[chatID]
@@ -257,8 +263,22 @@ func (e *Engine) RecordIncomingMessageForRush(chatID string) {
 
 	// Check if rush threshold reached (12 messages in 90s)
 	if len(valid) >= 12 && e.canTriggerAuto(chatID, 2*time.Hour) {
+		// Safety check: ensure none of the last 12 messages were from Nova or called Nova
+		if e.chatLogger != nil {
+			recentLogs, err := e.chatLogger.GetRecentMessages("group", chatID, 12)
+			if err == nil {
+				for _, log := range recentLogs {
+					if log.IsNova || trigger.ContainsTrigger(log.Text) {
+						e.recentRushCounts[chatID] = nil
+						return
+					}
+				}
+			}
+		}
+
+		e.recentRushCounts[chatID] = nil
 		e.lastAutoTrigger[chatID] = now
-		go e.triggerProactive(chatID, "group", "الجروب مولع كلام ورسايل سريعة ورا بعضها في نقاش سخن! ادخلي ارمي تعليق روش وسريع وسط الزحمة يتفاعل مع حماسهم بروحك المصرية.")
+		go e.triggerProactive(chatID, "group", "الجروب مولع كلام ورسايل سريعة ورا بعضها في نقاش سخن بين الأعضاء بدون وجودك! ادخلي ارمي تعليق روش وسريع وسط الزحمة يتفاعل مع حماسهم بروحك المصرية.")
 	}
 }
 

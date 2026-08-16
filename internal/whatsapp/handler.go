@@ -19,7 +19,7 @@ import (
 
 // SchedulerEngineInterface defines methods expected from the scheduler.
 type SchedulerEngineInterface interface {
-	RecordIncomingMessageForRush(chatID string)
+	RecordIncomingMessageForRush(chatID string, wasTriggerMatched bool)
 	TriggerNewMemberJoined(chatID, newMemberName string)
 }
 
@@ -201,13 +201,14 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// Feed message to rush tracker for Trigger 3
-	if h.schedulerEngine != nil && evt.Info.IsGroup {
-		h.schedulerEngine.RecordIncomingMessageForRush(chatID)
-	}
-
 	// 4. Trigger Matching ("يا نوفا" in text or reply)
 	triggerMatched := trigger.CheckTrigger(text, isReply, repliedText)
+
+	// Feed message to rush tracker for Trigger 3
+	if h.schedulerEngine != nil && evt.Info.IsGroup {
+		h.schedulerEngine.RecordIncomingMessageForRush(chatID, triggerMatched)
+	}
+
 	if !triggerMatched {
 		return
 	}

@@ -200,7 +200,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	// 1. Execute initial attempt with Tool Calling loop
-	rawResp, err := c.executeConversation(ctx, messages, payload)
+	rawResp, usedSearch, err := c.executeConversation(ctx, messages, payload)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("openrouter request failed: %w", err)
@@ -209,6 +209,11 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	parsed, parseErr := ParseResponse(rawResp)
 	if parseErr == nil {
 		c.recordSuccess()
+		if usedSearch && parsed.ReplyText != nil && *parsed.ReplyText != "" {
+			trimmed := strings.TrimSpace(*parsed.ReplyText)
+			modified := "تم البحث\n\n" + trimmed
+			parsed.ReplyText = &modified
+		}
 		return parsed, nil
 	}
 
@@ -221,7 +226,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		},
 	)
 
-	rawRetryResp, retryErr := c.executeConversation(ctx, retryMessages, payload)
+	rawRetryResp, retryUsedSearch, retryErr := c.executeConversation(ctx, retryMessages, payload)
 	if retryErr != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("retry openrouter request failed: %w", retryErr)
@@ -234,26 +239,33 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	c.recordSuccess()
+	if (usedSearch || retryUsedSearch) && parsedRetry.ReplyText != nil && *parsedRetry.ReplyText != "" {
+		trimmed := strings.TrimSpace(*parsedRetry.ReplyText)
+		modified := "تم البحث\n\n" + trimmed
+		parsedRetry.ReplyText = &modified
+	}
+
 	return parsedRetry, nil
 }
 
 // executeConversation executes the message list, handling any tool calls (web_search, schedule_followup).
-func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []openRouterMessage, payload *trigger.RequestPayload) (string, error) {
+func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, error) {
 	currentMessages := make([]openRouterMessage, len(messages))
 	copy(currentMessages, messages)
+	usedSearch := false
 
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, currentMessages)
 		if err != nil {
-			return "", err
+			return "", usedSearch, err
 		}
 
 		// If the model did not request any tool calls, return the text content
 		if len(choiceMsg.ToolCalls) == 0 {
 			if contentStr, ok := choiceMsg.Content.(string); ok {
-				return strings.TrimSpace(contentStr), nil
+				return strings.TrimSpace(contentStr), usedSearch, nil
 			}
-			return "", fmt.Errorf("unexpected content format in model response")
+			return "", usedSearch, fmt.Errorf("unexpected content format in model response")
 		}
 
 		// Process tool calls
@@ -262,6 +274,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 		for _, call := range choiceMsg.ToolCalls {
 			switch call.Function.Name {
 			case "web_search":
+				usedSearch = true
 				var args struct {
 					Query string `json:"query"`
 				}
@@ -320,7 +333,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 		}
 	}
 
-	return "", fmt.Errorf("exceeded maximum tool calling steps")
+	return "", usedSearch, fmt.Errorf("exceeded maximum tool calling steps")
 }
 
 func (c *OpenRouterClient) callAPI(ctx context.Context, messages []openRouterMessage) (openRouterMessage, error) {
