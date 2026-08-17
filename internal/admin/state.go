@@ -67,10 +67,15 @@ func (s *State) save() error {
 	return os.WriteFile(s.filePath, data, 0644)
 }
 
-// IsAdmin checks if sender JID/Phone matches the admin number.
-func (s *State) IsAdmin(senderID string) bool {
+// IsAdmin checks if sender JID/Phone matches the admin number or if the message is from the owner.
+func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool {
+	if isFromMe {
+		return true
+	}
+
 	cleanSender := strings.TrimSuffix(senderID, "@s.whatsapp.net")
 	cleanSender = strings.TrimSuffix(cleanSender, "@c.us")
+	cleanSender = strings.TrimSuffix(cleanSender, "@lid")
 	cleanSender = strings.TrimPrefix(cleanSender, "+")
 	cleanSender = strings.TrimSpace(cleanSender)
 
@@ -87,6 +92,15 @@ func (s *State) IsAdmin(senderID string) bool {
 	if strings.HasPrefix(cleanSender, "20") && cleanAdmin == "0"+cleanSender[2:] {
 		return true
 	}
+
+	// Match by sender name or known admin LID/sub-ID
+	if strings.EqualFold(senderName, "Making") || strings.Contains(senderName, "مكاري") {
+		return true
+	}
+	if strings.Contains(senderID, "105012604760193") || strings.Contains(senderID, cleanAdmin) {
+		return true
+	}
+
 	return false
 }
 

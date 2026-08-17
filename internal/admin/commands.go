@@ -25,6 +25,8 @@ func HandleAdminCommand(
 	state *State,
 	chatID string,
 	senderID string,
+	senderName string,
+	isFromMe bool,
 	text string,
 	stats StatsProvider,
 ) CommandResult {
@@ -34,7 +36,7 @@ func HandleAdminCommand(
 	}
 
 	// Verify admin authority
-	if !state.IsAdmin(senderID) {
+	if !state.IsAdmin(senderID, senderName, isFromMe) {
 		return CommandResult{Handled: false}
 	}
 

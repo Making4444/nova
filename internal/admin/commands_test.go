@@ -32,13 +32,13 @@ func TestAdminCommands(t *testing.T) {
 	nonAdminSender := "201011112222@s.whatsapp.net"
 
 	// 1. Non-admin should be rejected
-	res := HandleAdminCommand(state, chatID, nonAdminSender, "/shutdown", stats)
+	res := HandleAdminCommand(state, chatID, nonAdminSender, "Stranger", false, "/shutdown", stats)
 	if res.Handled {
 		t.Errorf("non-admin should not be able to execute commands")
 	}
 
 	// 2. /shutdown test
-	res = HandleAdminCommand(state, chatID, adminSender, "/shutdown", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/shutdown", stats)
 	if !res.Handled || !state.GetShutdown() {
 		t.Errorf("expected /shutdown to set shutdown mode")
 	}
@@ -47,35 +47,35 @@ func TestAdminCommands(t *testing.T) {
 	}
 
 	// 3. /start test
-	res = HandleAdminCommand(state, chatID, adminSender, "/start", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/start", stats)
 	if !res.Handled || state.GetShutdown() {
 		t.Errorf("expected /start to reset shutdown mode")
 	}
 
 	// 4. /set test
-	res = HandleAdminCommand(state, chatID, adminSender, "/set 500", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set 500", stats)
 	if !res.Handled || state.GetChatLimit(chatID, 0) != 500 {
 		t.Errorf("expected chat limit 500, got %d", state.GetChatLimit(chatID, 0))
 	}
 
-	res = HandleAdminCommand(state, chatID, adminSender, "/set all", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set all", stats)
 	if !res.Handled || state.GetChatLimit(chatID, 100) != 0 {
 		t.Errorf("expected chat limit 0 (all), got %d", state.GetChatLimit(chatID, 100))
 	}
 
 	// 5. /auto test
-	res = HandleAdminCommand(state, chatID, adminSender, "/auto on", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto on", stats)
 	if !res.Handled || !state.IsAutoTriggersEnabled(chatID) {
 		t.Errorf("expected auto triggers enabled")
 	}
 
-	res = HandleAdminCommand(state, chatID, adminSender, "/auto off", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto off", stats)
 	if !res.Handled || state.IsAutoTriggersEnabled(chatID) {
 		t.Errorf("expected auto triggers disabled")
 	}
 
 	// 6. /status test
-	res = HandleAdminCommand(state, chatID, adminSender, "/status", stats)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/status", stats)
 	if !res.Handled || !strings.Contains(res.ReplyText, "Nova Status") {
 		t.Errorf("expected status output, got: %s", res.ReplyText)
 	}

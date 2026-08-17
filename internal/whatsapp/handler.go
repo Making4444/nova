@@ -189,14 +189,19 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		h.logger.Errorf("Failed to log message %s in chat %s: %v", messageID, chatID, err)
 	}
 
-	// 3. Admin Command Check (Exclusive for admin number)
+	// 3. Admin Command Check (Exclusive for admin)
 	if h.adminState != nil && strings.HasPrefix(strings.TrimSpace(text), "/") {
-		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, text, h.statsProvider)
+		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, text, h.statsProvider)
 		if cmdRes.Handled {
-			h.logger.Infof("Admin command executed by %s: %s", senderID, text)
+			h.logger.Infof("Admin command executed by %s (%s): %s", senderName, senderID, text)
+			fmt.Printf("\n[👑 Admin Command] %s (%s) executed %q in chat %s\n", senderName, senderID, text, chatID)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			_ = h.SendMessage(ctx, chatID, cmdRes.ReplyText, messageID)
+			err := h.SendMessage(ctx, chatID, cmdRes.ReplyText, messageID)
 			cancel()
+			if err != nil {
+				h.logger.Errorf("Failed to send admin command reply: %v", err)
+				fmt.Printf("[❌ Admin Command Error] Failed to send reply: %v\n", err)
+			}
 			return
 		}
 	}
