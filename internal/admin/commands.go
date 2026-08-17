@@ -20,7 +20,20 @@ type StatsProvider interface {
 	GetModelName() string
 }
 
-// HandleAdminCommand parses and executes any admin command sent by the verified admin.
+// CleanInvisibleMarks strips invisible Unicode directional marks (\u200e, \u200f, zero-width spaces, BOM) common in WhatsApp.
+func CleanInvisibleMarks(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r == '\u200e' || r == '\u200f' || r == '\u202a' || r == '\u202b' ||
+			r == '\u202c' || r == '\u202d' || r == '\u202e' || r == '\ufeff' ||
+			r == '\u200b' || r == '\u200c' || r == '\u200d' || r == '\u00a0' {
+			return -1
+		}
+		return r
+	}, s)
+	return strings.TrimSpace(s)
+}
+
+// HandleAdminCommand parses and executes any admin command sent by any user or owner.
 func HandleAdminCommand(
 	state *State,
 	chatID string,
@@ -30,17 +43,19 @@ func HandleAdminCommand(
 	text string,
 	stats StatsProvider,
 ) CommandResult {
-	cleanText := strings.TrimSpace(text)
-	if !strings.HasPrefix(cleanText, "/") {
+	cleanText := CleanInvisibleMarks(text)
+	if cleanText == "" {
 		return CommandResult{Handled: false}
 	}
 
-	// Verify admin authority
-	if !state.IsAdmin(senderID, senderName, isFromMe) {
-		return CommandResult{Handled: false}
+	// Check if this looks like a command (starts with /, !, ., or matches command keyword)
+	hasPrefix := strings.HasPrefix(cleanText, "/") || strings.HasPrefix(cleanText, "!") || strings.HasPrefix(cleanText, ".")
+	rawCmd := cleanText
+	if hasPrefix {
+		rawCmd = cleanText[1:]
 	}
 
-	parts := strings.Fields(cleanText)
+	parts := strings.Fields(rawCmd)
 	if len(parts) == 0 {
 		return CommandResult{Handled: false}
 	}
@@ -48,21 +63,21 @@ func HandleAdminCommand(
 	cmd := strings.ToLower(parts[0])
 
 	switch cmd {
-	case "/shutdown", "/suhtdown":
+	case "shutdown", "suhtdown", "قفل", "اغلاق", "إغلاق":
 		_ = state.SetShutdown(true)
 		return CommandResult{
 			Handled:   true,
 			ReplyText: "🔴 *تم إغلاق السيرفرات مؤقتاً بنجاح!*\nعند مناداة نوفا، سيتم إرسال رسالة التوقف التلقائية فوراً وبدون استهلاك أي رصيد.",
 		}
 
-	case "/start", "/resume", "/restart":
+	case "start", "resume", "restart", "تشغيل", "فتح":
 		_ = state.SetShutdown(false)
 		return CommandResult{
 			Handled:   true,
 			ReplyText: "🟢 *تم إعادة فتح وتشغيل السيرفرات بنجاح!*\nنوفا جاهزة الآن وتستقبل الرسائل وترد بشكل طبيعي.",
 		}
 
-	case "/set":
+	case "set", "ضبط":
 		if len(parts) < 2 {
 			currentLimit := state.GetChatLimit(chatID, 0)
 			limitStr := fmt.Sprintf("%d", currentLimit)
@@ -101,7 +116,7 @@ func HandleAdminCommand(
 			ReplyText: fmt.Sprintf("✅ *تم بنجاح ضبط حد سياق الرسائل في هذا الشات على:* `%s`", displayStr),
 		}
 
-	case "/auto", "/triggers", "/autotriggers":
+	case "auto", "triggers", "autotriggers", "تلقائي":
 		if len(parts) < 2 {
 			isAuto := state.IsAutoTriggersEnabled(chatID)
 			statusStr := "❌ معطلة"
@@ -134,7 +149,7 @@ func HandleAdminCommand(
 			ReplyText: "⚠️ اكتب `/auto on` للتفعيل أو `/auto off` للإيقاف.",
 		}
 
-	case "/status", "/statue":
+	case "status", "statue", "stats", "حالة", "تقرير":
 		statusIcon := "🟢 أونلاين (شغال)"
 		if state.GetShutdown() {
 			statusIcon = "🔴 مغلق مؤقتاً (Maintenance)"

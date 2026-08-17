@@ -189,25 +189,28 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		h.logger.Errorf("Failed to log message %s in chat %s: %v", messageID, chatID, err)
 	}
 
-	// 3. Admin Command Check (Exclusive for admin)
-	if h.adminState != nil && strings.HasPrefix(strings.TrimSpace(text), "/") {
-		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, text, h.statsProvider)
+	// Clean text from invisible unicode marks
+	cleanText := admin.CleanInvisibleMarks(text)
+
+	// 3. Command Check (Available to any user)
+	if h.adminState != nil {
+		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, cleanText, h.statsProvider)
 		if cmdRes.Handled {
-			h.logger.Infof("Admin command executed by %s (%s): %s", senderName, senderID, text)
-			fmt.Printf("\n[👑 Admin Command] %s (%s) executed %q in chat %s\n", senderName, senderID, text, chatID)
+			h.logger.Infof("Command executed by %s (%s): %s", senderName, senderID, cleanText)
+			fmt.Printf("\n[👑 Command Executed] %s (%s) executed %q in chat %s\n", senderName, senderID, cleanText, chatID)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			err := h.SendMessage(ctx, chatID, cmdRes.ReplyText, messageID)
 			cancel()
 			if err != nil {
-				h.logger.Errorf("Failed to send admin command reply: %v", err)
-				fmt.Printf("[❌ Admin Command Error] Failed to send reply: %v\n", err)
+				h.logger.Errorf("Failed to send command reply: %v", err)
+				fmt.Printf("[❌ Command Error] Failed to send reply: %v\n", err)
 			}
 			return
 		}
 	}
 
 	// 4. Trigger Matching ("يا نوفا" in text or reply)
-	triggerMatched := trigger.CheckTrigger(text, isReply, repliedText)
+	triggerMatched := trigger.CheckTrigger(cleanText, isReply, admin.CleanInvisibleMarks(repliedText))
 
 	// Feed message to rush tracker for Trigger 3
 	if h.schedulerEngine != nil && evt.Info.IsGroup {
