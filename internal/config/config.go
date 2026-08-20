@@ -71,7 +71,7 @@ func LoadConfig() (*Config, error) {
 	// TTS Configuration (OpenRouter Audio / Speech)
 	ttsModel := os.Getenv("TTS_MODEL")
 	if ttsModel == "" {
-		ttsModel = "openai/tts-1"
+		ttsModel = "openai/gpt-audio-mini"
 	}
 
 	ttsVoice := os.Getenv("TTS_VOICE")

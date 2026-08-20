@@ -1,20 +1,21 @@
 package voice
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-const openRouterSpeechURL = "https://openrouter.ai/api/v1/audio/speech"
+const openRouterChatURL = "https://openrouter.ai/api/v1/chat/completions"
 
-// OpenRouterTTS synthesizes speech using OpenRouter OpenAI Speech API and converts to WhatsApp PTT OGG Opus.
+// OpenRouterTTS synthesizes speech using OpenRouter OpenAI Native Audio (gpt-audio-mini) and converts to WhatsApp PTT OGG Opus.
 type OpenRouterTTS struct {
 	apiKey     string
 	model      string
@@ -24,8 +25,8 @@ type OpenRouterTTS struct {
 
 // NewOpenRouterTTS creates a new OpenRouter TTS client.
 func NewOpenRouterTTS(apiKey, model, voice string) *OpenRouterTTS {
-	if model == "" {
-		model = "openai/tts-1"
+	if model == "" || model == "openai/tts-1" {
+		model = "openai/gpt-audio-mini"
 	}
 	if voice == "" {
 		voice = "onyx"
@@ -35,31 +36,61 @@ func NewOpenRouterTTS(apiKey, model, voice string) *OpenRouterTTS {
 		model:  model,
 		voice:  voice,
 		httpClient: &http.Client{
-			Timeout: 45 * time.Second,
+			Timeout: 60 * time.Second,
 		},
 	}
 }
 
-type speechRequest struct {
-	Model          string `json:"model"`
-	Input          string `json:"input"`
-	Voice          string `json:"voice"`
-	ResponseFormat string `json:"response_format"`
+type audioConfig struct {
+	Voice  string `json:"voice"`
+	Format string `json:"format"`
 }
 
-// SynthesizeToOggOpus generates speech from text via OpenRouter and converts it to WhatsApp OGG Opus format.
+type messagePayload struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type chatAudioRequest struct {
+	Model      string           `json:"model"`
+	Modalities []string         `json:"modalities"`
+	Audio      audioConfig      `json:"audio"`
+	Stream     bool             `json:"stream"`
+	Messages   []messagePayload `json:"messages"`
+}
+
+type streamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+			Audio   struct {
+				Data string `json:"data"`
+			} `json:"audio"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
+// SynthesizeToOggOpus generates speech from text via OpenRouter gpt-audio-mini and converts it to WhatsApp OGG Opus format.
 func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([]byte, uint32, error) {
 	cleanText := strings.TrimSpace(text)
 	if cleanText == "" {
 		return nil, 0, fmt.Errorf("input text cannot be empty")
 	}
 
-	// 1. Call OpenRouter /api/v1/audio/speech
-	reqBody := speechRequest{
-		Model:          t.model,
-		Input:          cleanText,
-		Voice:          t.voice,
-		ResponseFormat: "mp3",
+	reqBody := chatAudioRequest{
+		Model:      t.model,
+		Modalities: []string{"text", "audio"},
+		Audio: audioConfig{
+			Voice:  t.voice,
+			Format: "pcm16",
+		},
+		Stream: true,
+		Messages: []messagePayload{
+			{
+				Role:    "user",
+				Content: "اقرأ هذا النص بصوتك الطبيعي بالعامية المصرية تماماً كما هو بدون أي تعديل أو تعليق إضافي:\n" + cleanText,
+			},
+		},
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -67,7 +98,7 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 		return nil, 0, fmt.Errorf("failed to marshal speech request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterSpeechURL, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterChatURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create speech request: %w", err)
 	}
@@ -84,28 +115,56 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read speech audio response: %w", err)
-	}
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, 0, fmt.Errorf("speech API error (status %d): %s", resp.StatusCode, string(respBytes))
+		return nil, 0, fmt.Errorf("speech API error (status %d)", resp.StatusCode)
 	}
 
-	fmt.Printf("[✅ OpenRouter Voice] Received %d bytes MP3 audio, converting to WhatsApp OGG Opus...\n", len(respBytes))
+	// Read Server-Sent Events (SSE) stream
+	scanner := bufio.NewScanner(resp.Body)
+	var audioBase64Builder strings.Builder
 
-	// 2. Convert MP3 to WhatsApp OGG Opus via ffmpeg
-	oggBytes, err := ConvertMP3ToOggOpus(ctx, respBytes)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		dataStr := strings.TrimPrefix(line, "data: ")
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		var chunk streamChunk
+		if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil {
+			if len(chunk.Choices) > 0 {
+				if chunk.Choices[0].Delta.Audio.Data != "" {
+					audioBase64Builder.WriteString(chunk.Choices[0].Delta.Audio.Data)
+				}
+			}
+		}
+	}
+
+	fullBase64 := audioBase64Builder.String()
+	if len(fullBase64) == 0 {
+		return nil, 0, fmt.Errorf("no audio stream data received from model")
+	}
+
+	rawPCM, err := base64.StdEncoding.DecodeString(fullBase64)
 	if err != nil {
-		fmt.Printf("[⚠️ FFmpeg Warning] Could not convert via ffmpeg (%v), using raw bytes\n", err)
-		oggBytes = respBytes
-	} else {
-		fmt.Printf("[✅ Audio Converted] WhatsApp Ogg Opus ready (%d bytes)\n", len(oggBytes))
+		return nil, 0, fmt.Errorf("failed to decode PCM audio base64: %w", err)
 	}
 
-	// Approximate duration: ~12-15 chars per second in Arabic speech
-	durationSec := uint32(len(cleanText) / 14)
+	fmt.Printf("[✅ OpenRouter Voice] Received %d bytes PCM16 audio, converting to WhatsApp OGG Opus...\n", len(rawPCM))
+
+	// 2. Convert PCM16 (24kHz, 1-channel, s16le) to WhatsApp OGG Opus via ffmpeg
+	oggBytes, err := ConvertPCMToOggOpus(ctx, rawPCM)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ffmpeg conversion failed: %w", err)
+	}
+
+	fmt.Printf("[✅ Audio Converted] WhatsApp Ogg Opus ready (%d bytes)\n", len(oggBytes))
+
+	// Duration calculation: 24000 samples/sec * 2 bytes/sample (16-bit) = 48000 bytes/sec
+	durationSec := uint32(len(rawPCM) / 48000)
 	if durationSec < 1 {
 		durationSec = 1
 	}
@@ -113,10 +172,10 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 	return oggBytes, durationSec, nil
 }
 
-// ConvertMP3ToOggOpus converts MP3 audio bytes into audio/ogg; codecs=opus for WhatsApp Voice Notes (PTT).
-func ConvertMP3ToOggOpus(ctx context.Context, mp3Data []byte) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-f", "ogg", "pipe:1")
-	cmd.Stdin = bytes.NewReader(mp3Data)
+// ConvertPCMToOggOpus converts 24kHz s16le 1ch raw PCM into audio/ogg; codecs=opus for WhatsApp Voice Notes (PTT).
+func ConvertPCMToOggOpus(ctx context.Context, pcmData []byte) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-f", "s16le", "-ar", "24000", "-ac", "1", "-i", "pipe:0", "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-f", "ogg", "pipe:1")
+	cmd.Stdin = bytes.NewReader(pcmData)
 
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
