@@ -7,4 +7,5 @@ type ResponsePayload struct {
 	ReplyToMessageID *string `json:"reply_to_message_id"`
 	MemoryNote       *string `json:"memory_note"`
 	Mood             *string `json:"mood"`
+	SendAsVoice      *bool   `json:"send_as_voice,omitempty"`
 }

@@ -15,6 +15,7 @@ import (
 	"novabot/internal/ai"
 	"novabot/internal/storage"
 	"novabot/internal/trigger"
+	"novabot/internal/voice"
 )
 
 // SchedulerEngineInterface defines methods expected from the scheduler.
@@ -27,6 +28,7 @@ type SchedulerEngineInterface interface {
 type EventHandler struct {
 	waClient        *Client
 	aiClient        *ai.OpenRouterClient
+	ttsClient       *voice.OpenRouterTTS
 	chatLogger      *storage.ChatLogger
 	memStore        *storage.MemoryStore
 	adminState      *admin.State
@@ -61,6 +63,11 @@ func NewEventHandler(
 		logger:       logger,
 		novaMsgIDs:   make(map[string]time.Time),
 	}
+}
+
+// SetTTSClient attaches the TTS speech synthesis engine.
+func (h *EventHandler) SetTTSClient(tts *voice.OpenRouterTTS) {
+	h.ttsClient = tts
 }
 
 // SetSchedulerEngine attaches the scheduler engine.
@@ -315,8 +322,31 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		targetMsgID = *aiResp.ReplyToMessageID
 	}
 
-	// 10. Send WhatsApp Reply (Quote)
-	sentMsgID, err := h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String())
+	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
+	isVoiceIncoming := (evt.Message.GetAudioMessage() != nil)
+	isVoiceRequested := strings.Contains(cleanText, "فويس") || strings.Contains(cleanText, "صوتك") ||
+		strings.Contains(cleanText, "ريكورد") || strings.Contains(cleanText, "صوتي") ||
+		strings.Contains(cleanText, "بصوتك") || strings.Contains(cleanText, "اتكلم")
+	aiWantsVoice := (aiResp.SendAsVoice != nil && *aiResp.SendAsVoice)
+
+	var sentMsgID types.MessageID
+	if (isVoiceIncoming || isVoiceRequested || aiWantsVoice) && h.ttsClient != nil {
+		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ctx, *aiResp.ReplyText)
+		if ttsErr == nil && len(oggBytes) > 0 {
+			sentMsgID, err = h.waClient.SendVoiceNote(ctx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String())
+			if err == nil {
+				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds)", durSec)
+			}
+		} else {
+			h.logger.Warnf("TTS synthesis failed (%v), falling back to text reply", ttsErr)
+		}
+	}
+
+	// If not sent as voice note, send regular text reply
+	if sentMsgID == "" {
+		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String())
+	}
+
 	if err != nil {
 		h.logger.Errorf("Failed to send WhatsApp reply for message %s: %v", messageID, err)
 		return

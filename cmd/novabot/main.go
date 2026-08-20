@@ -15,6 +15,7 @@ import (
 	"novabot/internal/scheduler"
 	"novabot/internal/storage"
 	"novabot/internal/trigger"
+	"novabot/internal/voice"
 	"novabot/internal/whatsapp"
 )
 
@@ -116,7 +117,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 5. Register Event Handler
+	// 5. Register Event Handler & Voice Engine
 	eventHandler := whatsapp.NewEventHandler(
 		waClient,
 		aiClient,
@@ -127,6 +128,12 @@ func main() {
 		cfg.ContextHistoryLimit,
 		logger,
 	)
+
+	if cfg.OpenRouterAPIKey != "" {
+		ttsClient := voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
+		eventHandler.SetTTSClient(ttsClient)
+		fmt.Printf("🎙️  تم تفعيل المحرك الصوتي بنجاح (النموذج: %s | الصوت: %s)\n", cfg.TTSModel, cfg.TTSVoice)
+	}
 
 	// 6. Initialize Scheduler Engine & wire dependencies
 	schedulerEngine := scheduler.NewEngine(

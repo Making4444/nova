@@ -17,6 +17,8 @@ type Config struct {
 	SessionDBPath       string
 	ChatCooldownSeconds int
 	ContextHistoryLimit int
+	TTSModel            string
+	TTSVoice            string
 }
 
 // LoadConfig loads environment variables and reads the system prompt once on startup.
@@ -66,6 +68,17 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// TTS Configuration (OpenRouter Audio / Speech)
+	ttsModel := os.Getenv("TTS_MODEL")
+	if ttsModel == "" {
+		ttsModel = "openai/tts-1"
+	}
+
+	ttsVoice := os.Getenv("TTS_VOICE")
+	if ttsVoice == "" {
+		ttsVoice = "onyx" // Male voice for Nova (onyx / echo / alloy)
+	}
+
 	return &Config{
 		OpenRouterAPIKey:    apiKey,
 		OpenRouterModel:     model,
@@ -73,5 +86,7 @@ func LoadConfig() (*Config, error) {
 		SessionDBPath:       sessionDB,
 		ChatCooldownSeconds: cooldownSec,
 		ContextHistoryLimit: historyLimit,
+		TTSModel:            ttsModel,
+		TTSVoice:            ttsVoice,
 	}, nil
 }
