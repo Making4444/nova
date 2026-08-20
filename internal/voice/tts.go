@@ -70,9 +70,26 @@ type streamChunk struct {
 	} `json:"choices"`
 }
 
+// CleanTextForSpeech removes markdown formatting, emojis, search headers, and symbols for clean spoken voice.
+func CleanTextForSpeech(text string) string {
+	s := strings.TrimSpace(text)
+	s = strings.TrimPrefix(s, "تم البحث")
+	s = strings.TrimSpace(s)
+
+	// Remove markdown formatting characters
+	s = strings.ReplaceAll(s, "*", "")
+	s = strings.ReplaceAll(s, "_", "")
+	s = strings.ReplaceAll(s, "~", "")
+	s = strings.ReplaceAll(s, "`", "")
+	s = strings.ReplaceAll(s, "#", "")
+	s = strings.ReplaceAll(s, ">", "")
+
+	return strings.TrimSpace(s)
+}
+
 // SynthesizeToOggOpus generates speech from text via OpenRouter gpt-audio-mini and converts it to WhatsApp OGG Opus format.
 func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([]byte, uint32, error) {
-	cleanText := strings.TrimSpace(text)
+	cleanText := CleanTextForSpeech(text)
 	if cleanText == "" {
 		return nil, 0, fmt.Errorf("input text cannot be empty")
 	}
@@ -87,8 +104,12 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 		Stream: true,
 		Messages: []messagePayload{
 			{
+				Role:    "system",
+				Content: "You are a pure Text-to-Speech (TTS) voice synthesizer. You speak authentic, expressive Egyptian Arabic with a natural human tone. Your ONLY job is to read aloud the exact text provided by the user. NEVER add any introductory remarks, greetings, or filler words like 'حاضر' or 'تمام' or 'إليك'. Start speaking the user text immediately.",
+			},
+			{
 				Role:    "user",
-				Content: "اقرأ هذا النص بصوتك الطبيعي بالعامية المصرية تماماً كما هو بدون أي تعديل أو تعليق إضافي:\n" + cleanText,
+				Content: cleanText,
 			},
 		},
 	}
