@@ -18,6 +18,7 @@ type Config struct {
 	GroqAPIKey          string
 	ModelWhisper        string
 	ModelRouterGroq     string
+	ModelSummarizer     string
 	OpenRouterModel     string // Default chat model fallback
 	SystemPrompt        string
 	SessionDBPath       string
@@ -51,6 +52,11 @@ func LoadConfig() (*Config, error) {
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
 		modelVision = "openai/gpt-5.6-luna"
+	}
+
+	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")
+	if modelSummarizer == "" {
+		modelSummarizer = "google/gemini-3.7-flash"
 	}
 
 	modelWhisper := os.Getenv("MODEL_WHISPER")
@@ -114,6 +120,7 @@ func LoadConfig() (*Config, error) {
 		GroqAPIKey:          groqKey,
 		ModelWhisper:        modelWhisper,
 		ModelRouterGroq:     modelRouterGroq,
+		ModelSummarizer:     modelSummarizer,
 		OpenRouterModel:     modelChat,
 		SystemPrompt:        string(promptBytes),
 		SessionDBPath:       sessionDB,

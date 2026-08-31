@@ -71,8 +71,8 @@ func performHealthCheck(cfg *config.Config) {
 
 	// 2. OpenRouter check
 	if cfg.OpenRouterAPIKey != "" {
-		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | الرؤية: %s)\n",
-			cfg.ModelChat, cfg.ModelMath, cfg.ModelVision)
+		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | الرؤية: %s | التلخيص: %s)\n",
+			cfg.ModelChat, cfg.ModelMath, cfg.ModelVision, cfg.ModelSummarizer)
 	} else {
 		fmt.Println("  [❌ OpenRouter] لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
 	}
@@ -138,6 +138,7 @@ func main() {
 		cfg.ModelChat,
 		cfg.ModelMath,
 		cfg.ModelVision,
+		cfg.ModelSummarizer,
 		groqRouter,
 		cfg.SystemPrompt,
 	)

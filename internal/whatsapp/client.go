@@ -3,17 +3,12 @@ package whatsapp
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waCommon"
-	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	waLog "go.mau.fi/whatsmeow/util/log"
-	"google.golang.org/protobuf/proto"
 )
 
 // Client wraps whatsmeow.Client and provides helper methods.
@@ -107,29 +102,13 @@ func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText str
 	return resp.ID, nil
 }
 
-// SendReaction sends an emoji reaction to a specific message.
-func (c *Client) SendReaction(ctx context.Context, chatJID types.JID, targetMessageID string, targetSender string, emoji string) error {
+// SendReaction sends an emoji reaction to a specific message using whatsmeow's official BuildReaction.
+func (c *Client) SendReaction(ctx context.Context, chatJID types.JID, senderJID types.JID, targetMessageID string, emoji string) error {
 	if c.WAClient == nil || targetMessageID == "" || emoji == "" {
 		return nil
 	}
 
-	targetJIDStr := chatJID.String()
-	reactionMsg := &waE2E.Message{
-		ReactionMessage: &waE2E.ReactionMessage{
-			Key: &waCommon.MessageKey{
-				RemoteJID: proto.String(targetJIDStr),
-				FromMe:    proto.Bool(false),
-				ID:        proto.String(targetMessageID),
-			},
-			Text:              proto.String(emoji),
-			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
-		},
-	}
-
-	if targetSender != "" && strings.Contains(targetJIDStr, "@g.us") {
-		reactionMsg.ReactionMessage.Key.Participant = proto.String(targetSender)
-	}
-
+	reactionMsg := c.WAClient.BuildReaction(chatJID, senderJID, types.MessageID(targetMessageID), emoji)
 	_, err := c.WAClient.SendMessage(ctx, chatJID, reactionMsg)
 	return err
 }

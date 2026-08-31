@@ -98,7 +98,7 @@ func (h *EventHandler) ArchiveChatSession(ctx context.Context, chatType, chatID 
 
 	summary, userProfiles, sumErr := h.aiClient.SummarizeChatHistory(ctx, transcript)
 	if sumErr != nil {
-		summary = fmt.Sprintf("أرشفة تلقائية لـ %d رسالة. (فشل تلخيص الذكاء الاصطناعي: %v)", len(msgs), sumErr)
+		return "", 0, fmt.Errorf("فشل تلخيص الذكاء الاصطناعي: %w (تم إلغاء الأرشفة للحفاظ على سجل المحادثة سليماً)", sumErr)
 	}
 
 	// Update user profile cards
@@ -413,9 +413,14 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		emoji := strings.TrimSpace(*aiResp.ReactionEmoji)
 		if emoji != "" {
 			reactCtx, reactCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_ = h.waClient.SendReaction(reactCtx, evt.Info.Chat, targetMsgID, evt.Info.Sender.String(), emoji)
+			reactErr := h.waClient.SendReaction(reactCtx, evt.Info.Chat, evt.Info.Sender, targetMsgID, emoji)
 			reactCancel()
-			fmt.Printf("[✨ WhatsApp Reaction] Nova reacted with emoji %s to message %s\n", emoji, targetMsgID)
+			if reactErr != nil {
+				h.logger.Errorf("Failed to send WhatsApp reaction %s to message %s: %v", emoji, targetMsgID, reactErr)
+				fmt.Printf("[❌ WhatsApp Reaction Error] Failed to send emoji %s: %v\n", emoji, reactErr)
+			} else {
+				fmt.Printf("[✨ WhatsApp Reaction] Nova reacted with emoji %s to message %s\n", emoji, targetMsgID)
+			}
 		}
 	}
 

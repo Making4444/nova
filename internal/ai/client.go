@@ -37,6 +37,7 @@ type OpenRouterClient struct {
 	modelChat           string
 	modelMath           string
 	modelVision         string
+	modelSummarizer     string
 	groqRouter          *GroqRouter
 	systemPrompt        string
 	searchEngine        *SearchEngine
@@ -50,7 +51,7 @@ type OpenRouterClient struct {
 // NewMultiModelClient creates a new client supporting multi-model routing.
 func NewMultiModelClient(
 	apiKey string,
-	modelChat, modelMath, modelVision string,
+	modelChat, modelMath, modelVision, modelSummarizer string,
 	groqRouter *GroqRouter,
 	systemPrompt string,
 ) *OpenRouterClient {
@@ -63,24 +64,28 @@ func NewMultiModelClient(
 	if modelVision == "" {
 		modelVision = "openai/gpt-5.6-luna"
 	}
+	if modelSummarizer == "" {
+		modelSummarizer = "google/gemini-3.7-flash"
+	}
 
 	return &OpenRouterClient{
-		apiKey:       apiKey,
-		modelChat:    modelChat,
-		modelMath:    modelMath,
-		modelVision:  modelVision,
-		groqRouter:   groqRouter,
-		systemPrompt: systemPrompt,
-		searchEngine: NewSearchEngine(apiKey, "perplexity/sonar"),
+		apiKey:          apiKey,
+		modelChat:       modelChat,
+		modelMath:       modelMath,
+		modelVision:     modelVision,
+		modelSummarizer: modelSummarizer,
+		groqRouter:      groqRouter,
+		systemPrompt:    systemPrompt,
+		searchEngine:    NewSearchEngine(apiKey, "perplexity/sonar"),
 		httpClient: &http.Client{
-			Timeout: 75 * time.Second,
+			Timeout: 120 * time.Second,
 		},
 	}
 }
 
 // NewOpenRouterClient creates a backwards-compatible client.
 func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
-	return NewMultiModelClient(apiKey, model, "z-ai/glm-5.2", "openai/gpt-5.6-luna", nil, systemPrompt)
+	return NewMultiModelClient(apiKey, model, "z-ai/glm-5.2", "openai/gpt-5.6-luna", "google/gemini-3.7-flash", nil, systemPrompt)
 }
 
 // SetScheduler attaches a task scheduler instance to the AI client.
@@ -569,7 +574,7 @@ func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesTex
 	}
 
 	systemPrompt := `أنت محلل محادثات ذكي ومساعد لبوت نوفا. مهمتك تحليل سجل المحادثة الكامل وتحويله إلى:
-1. "summary": ملخص شامل ومختصر للمحادثة، يبرز أهم المواضيع، النكات، الأحداث، والقرارات المتخذة.
+1. "summary": ملخص شامل وممتع للمحادثة بصيغة Markdown، يبرز أهم المواضيع، النكات، الأحداث، والقرارات المتخذة.
 2. "users": قاموس يحتوي على بطاقة تعريفية لكل مستخدم شارك في الشات (المفتاح هو user_id أو اسمه، والقيمة هي ملخص شخصيته واهتماماته ومعلومات عنه).
 
 أرجع النتيجة بصيغة JSON نظيفة فقط:
@@ -585,9 +590,23 @@ func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesTex
 		{Role: "user", Content: messagesText},
 	}
 
-	choiceMsg, err := c.callAPI(ctx, c.modelChat, reqMessages, nil)
+	summarizerModel := c.modelSummarizer
+	if summarizerModel == "" {
+		summarizerModel = "google/gemini-3.7-flash"
+	}
+
+	fmt.Printf("\n[📋 Summarizer] Sending full chat transcript (%d chars) to long-context model: %s\n", len(messagesText), summarizerModel)
+	choiceMsg, err := c.callAPI(ctx, summarizerModel, reqMessages, nil)
 	if err != nil {
-		return "", nil, err
+		fmt.Printf("[⚠️ Summarizer Warning] %s failed (%v). Retrying with fallback google/gemini-2.5-flash...\n", summarizerModel, err)
+		choiceMsg, err = c.callAPI(ctx, "google/gemini-2.5-flash", reqMessages, nil)
+		if err != nil {
+			fmt.Printf("[⚠️ Summarizer Warning] google/gemini-2.5-flash failed (%v). Retrying with google/gemini-2.0-flash-001...\n", err)
+			choiceMsg, err = c.callAPI(ctx, "google/gemini-2.0-flash-001", reqMessages, nil)
+			if err != nil {
+				return "", nil, fmt.Errorf("failed to summarize chat transcript with AI models: %w", err)
+			}
+		}
 	}
 
 	contentStr, ok := choiceMsg.Content.(string)
