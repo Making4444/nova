@@ -38,7 +38,7 @@ func TestContainsTrigger(t *testing.T) {
 		{"With Punctuation", "يا نوفا!؟ شوفي كدة.", true},
 		{"With Alef variants", "إزيك يا نوفا", true},
 		{"Negative - normal sentence", "انا رايح الشغل دلوقتي", false},
-		{"Negative - only nova without ya", "نوفا اسم حلو", false},
+		{"Positive - nova without ya", "نوفا اسم حلو", true},
 		{"Negative - empty", "", false},
 	}
 
@@ -66,6 +66,28 @@ func TestCheckTriggerWithReply(t *testing.T) {
 	// 3. Reply to a message without trigger, and current has no trigger
 	if CheckTrigger("تمام", true, "صباح الخير يا شباب") {
 		t.Errorf("expected no match for non-trigger reply")
+	}
+}
+
+func TestCheckTriggerWithMentions(t *testing.T) {
+	botJID := "201202172699@s.whatsapp.net"
+
+	// 1. Mention bot by JID in MentionedJIDs
+	if !CheckTriggerWithMentions("ازيك عامل ايه", false, "", []string{botJID}, botJID) {
+		t.Errorf("expected mention by bot JID to match trigger")
+	}
+
+	// 2. Mention @nova or @نوفا in text
+	if !CheckTriggerWithMentions("@nova مساء الورد", false, "", nil, botJID) {
+		t.Errorf("expected @nova to match trigger")
+	}
+	if !CheckTriggerWithMentions("@نوفا اخبارك", false, "", nil, botJID) {
+		t.Errorf("expected @نوفا to match trigger")
+	}
+
+	// 3. Standalone "نوفا"
+	if !CheckTriggerWithMentions("نوفا قوليلي رأيك في الموضوع ده", false, "", nil, botJID) {
+		t.Errorf("expected standalone 'نوفا' to match trigger")
 	}
 }
 

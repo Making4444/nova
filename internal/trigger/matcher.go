@@ -57,13 +57,19 @@ func NormalizeForMatch(s string) string {
 	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(b.String(), " "))
 }
 
-// ContainsTrigger checks if the normalized copy contains "يا نوفا" or "يانوفا" (or "يا نوفه" / "يانوفه").
+// ContainsTrigger checks if the normalized copy contains "يا نوفا", "يانوفا", "نوفا", or tag mentions like "@nova", "@نوفا".
 func ContainsTrigger(text string) bool {
-	if text == "" {
+	if strings.TrimSpace(text) == "" {
 		return false
 	}
 
 	norm := NormalizeForMatch(text)
+	lowerRaw := strings.ToLower(text)
+
+	// Check explicit tags in raw text
+	if strings.Contains(lowerRaw, "@nova") || strings.Contains(text, "@نوفا") || strings.Contains(text, "@201202172699") {
+		return true
+	}
 
 	// Check for "يا نوفا" or concatenated "يانوفا" (and "يا نوفه" / "يانوفه")
 	if strings.Contains(norm, "يا نوفا") || strings.Contains(norm, "يانوفا") ||
@@ -71,19 +77,47 @@ func ContainsTrigger(text string) bool {
 		return true
 	}
 
+	// Check for standalone word "نوفا" or "نوفه" surrounded by boundaries or in short phrases
+	words := strings.Fields(norm)
+	for _, w := range words {
+		if w == "نوفا" || w == "نوفه" || w == "nova" {
+			return true
+		}
+	}
+
 	return false
 }
 
-// CheckTrigger checks if the trigger "يا نوفا" is matched in either:
-// 1. The current message text
-// 2. The replied-to message text (if this is a reply)
+// CheckTrigger checks if the trigger is matched in either direct text or replied text.
 func CheckTrigger(messageText string, isReply bool, repliedToText string) bool {
+	return CheckTriggerWithMentions(messageText, isReply, repliedToText, nil, "")
+}
+
+// CheckTriggerWithMentions checks if the trigger is matched in text, reply chain, or WhatsApp @mentioned JIDs.
+func CheckTriggerWithMentions(messageText string, isReply bool, repliedToText string, mentionedJIDs []string, botJID string) bool {
 	if ContainsTrigger(messageText) {
 		return true
 	}
 
 	if isReply && ContainsTrigger(repliedToText) {
 		return true
+	}
+
+	// Check if bot's JID or number was mentioned in WhatsApp MentionedJID array
+	if botJID != "" {
+		cleanBot := strings.TrimSuffix(botJID, "@s.whatsapp.net")
+		cleanBot = strings.TrimSuffix(cleanBot, "@lid")
+		for _, m := range mentionedJIDs {
+			if strings.Contains(m, cleanBot) || strings.Contains(m, "201202172699") {
+				return true
+			}
+		}
+	} else {
+		for _, m := range mentionedJIDs {
+			if strings.Contains(m, "201202172699") {
+				return true
+			}
+		}
 	}
 
 	return false

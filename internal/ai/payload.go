@@ -8,4 +8,5 @@ type ResponsePayload struct {
 	MemoryNote       *string `json:"memory_note"`
 	Mood             *string `json:"mood"`
 	SendAsVoice      *bool   `json:"send_as_voice,omitempty"`
+	ReactionEmoji    *string `json:"reaction_emoji,omitempty"`
 }

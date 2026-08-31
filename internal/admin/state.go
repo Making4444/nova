@@ -93,10 +93,7 @@ func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool 
 		return true
 	}
 
-	// Match by sender name or known admin LID/sub-ID
-	if strings.EqualFold(senderName, "Making") || strings.Contains(senderName, "مكاري") {
-		return true
-	}
+	// Match by known admin LID or phone number
 	if strings.Contains(senderID, "105012604760193") || strings.Contains(senderID, cleanAdmin) {
 		return true
 	}

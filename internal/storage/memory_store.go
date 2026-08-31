@@ -107,3 +107,21 @@ func (s *MemoryStore) AppendMemoryNote(userID, userName, note string) error {
 
 	return nil
 }
+
+// UpdateUserProfile writes or updates a structured user profile markdown file.
+func (s *MemoryStore) UpdateUserProfile(userID, userName, profileMarkdown string) error {
+	if userID == "" || strings.TrimSpace(profileMarkdown) == "" {
+		return nil
+	}
+
+	filePath := s.getFilePath(userID)
+	mu := s.getUserMutex(userID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	header := fmt.Sprintf("# 👤 بطاقة المستخدم: %s (%s)\n**آخر تحديث:** %s\n\n---\n\n",
+		userName, userID, time.Now().Format("2006-01-02 15:04:05"))
+
+	return os.WriteFile(filePath, []byte(header+profileMarkdown), 0644)
+}
+

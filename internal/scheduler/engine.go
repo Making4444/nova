@@ -38,6 +38,12 @@ type MessageDispatcher interface {
 	SendMessage(ctx context.Context, chatID string, text string, replyToID string) error
 }
 
+type silenceTracker struct {
+	Stage                int       // 0: normal/active, 1: 3h silence triggered, 2: +6h silence triggered, 3: locked
+	LastHumanMessageTime time.Time
+	LastSilenceTrigger   time.Time
+}
+
 // Engine manages scheduled tasks and server automated triggers.
 type Engine struct {
 	tasksFile          string
@@ -47,7 +53,7 @@ type Engine struct {
 	memStore           *storage.MemoryStore
 	dispatcher         MessageDispatcher
 	aiClient           AIResponder
-	lastAutoTrigger    map[string]time.Time // chatID -> last trigger time
+	silenceTrackers    map[string]*silenceTracker
 	recentRushCounts   map[string][]time.Time
 	mu                 sync.Mutex
 	stopChan           chan struct{}
@@ -71,7 +77,7 @@ func NewEngine(
 		memStore:         memStore,
 		dispatcher:       dispatcher,
 		aiClient:         aiClient,
-		lastAutoTrigger:  make(map[string]time.Time),
+		silenceTrackers:  make(map[string]*silenceTracker),
 		recentRushCounts: make(map[string][]time.Time),
 		stopChan:         make(chan struct{}),
 	}
@@ -237,18 +243,28 @@ func (e *Engine) executeTask(task ScheduledTask) {
 	_ = e.dispatcher.SendMessage(ctx, task.ChatID, *resp.ReplyText, "")
 }
 
-// RecordIncomingMessageForRush tracks message rate for Trigger 3 (Rush burst) with safety checks.
+// RecordIncomingMessageForRush tracks message rate and resets the Silence Breaker cycle on any human message.
 func (e *Engine) RecordIncomingMessageForRush(chatID string, wasTriggerMatched bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Safety: If Nova was called in this message, reset rush count because Nova is now actively involved!
+	now := time.Now()
+
+	// 1. Reset Silence Breaker stage on human message!
+	tracker, exists := e.silenceTrackers[chatID]
+	if !exists {
+		tracker = &silenceTracker{}
+		e.silenceTrackers[chatID] = tracker
+	}
+	tracker.Stage = 0
+	tracker.LastHumanMessageTime = now
+
+	// 2. Safety: If Nova was called in this message, reset rush count because Nova is now actively involved!
 	if wasTriggerMatched {
 		e.recentRushCounts[chatID] = nil
 		return
 	}
 
-	now := time.Now()
 	timestamps := e.recentRushCounts[chatID]
 	cutoff := now.Add(-90 * time.Second)
 
@@ -262,7 +278,7 @@ func (e *Engine) RecordIncomingMessageForRush(chatID string, wasTriggerMatched b
 	e.recentRushCounts[chatID] = valid
 
 	// Check if rush threshold reached (12 messages in 90s)
-	if len(valid) >= 12 && e.canTriggerAuto(chatID, 2*time.Hour) {
+	if len(valid) >= 12 && e.canTriggerAuto(chatID) {
 		// Safety check: ensure none of the last 12 messages were from Nova or called Nova
 		if e.chatLogger != nil {
 			recentLogs, err := e.chatLogger.GetRecentMessages("group", chatID, 12)
@@ -277,7 +293,6 @@ func (e *Engine) RecordIncomingMessageForRush(chatID string, wasTriggerMatched b
 		}
 
 		e.recentRushCounts[chatID] = nil
-		e.lastAutoTrigger[chatID] = now
 		go e.triggerProactive(chatID, "group", "الجروب مولع كلام ورسايل سريعة ورا بعضها في نقاش سخن بين الأعضاء بدون وجودك! ادخلي ارمي تعليق روش وسريع وسط الزحمة يتفاعل مع حماسهم بروحك المصرية.")
 	}
 }
@@ -291,15 +306,11 @@ func (e *Engine) TriggerNewMemberJoined(chatID, newMemberName string) {
 	go e.triggerProactive(chatID, "group", prompt)
 }
 
-func (e *Engine) canTriggerAuto(chatID string, minGap time.Duration) bool {
+func (e *Engine) canTriggerAuto(chatID string) bool {
 	if !e.state.IsAutoTriggersEnabled(chatID) || e.state.GetShutdown() {
 		return false
 	}
-	last, exists := e.lastAutoTrigger[chatID]
-	if !exists {
-		return true
-	}
-	return time.Since(last) >= minGap
+	return true
 }
 
 func (e *Engine) checkAutomatedTriggers() {
@@ -321,30 +332,83 @@ func (e *Engine) checkAutomatedTriggers() {
 	weekday := now.Weekday()
 
 	for _, chatID := range activeChats {
-		// Trigger 1: Silence Breaker (3 hours without talking between 10:00 AM and 23:00 PM)
-		if hour >= 10 && hour <= 23 && e.canTriggerAuto(chatID, 4*time.Hour) {
-			logs, err := e.chatLogger.GetRecentMessages("group", chatID, 1)
-			if err == nil && len(logs) > 0 {
-				if lastMsgTime, err := time.Parse(time.RFC3339, logs[len(logs)-1].Timestamp); err == nil {
-					if now.Sub(lastMsgTime) >= 3*time.Hour {
-						e.mu.Lock()
-						e.lastAutoTrigger[chatID] = now
-						e.mu.Unlock()
+		if !e.state.IsAutoTriggersEnabled(chatID) {
+			continue
+		}
 
-						prompt := "الجروب هادي ونايم بقاله 3 ساعات في عز النهار! ادخلي اكسري الصمت بنكشة أو إيفيه أو سؤال روش يصحّي الشات وتكيفي مع جو الجروب بروقان."
-						go e.triggerProactive(chatID, "group", prompt)
-						continue
+		// 1. Graduated Silence Breaker (3h -> 6h -> auto-stop until human writes)
+		e.mu.Lock()
+		tracker, exists := e.silenceTrackers[chatID]
+		if !exists {
+			tracker = &silenceTracker{}
+			e.silenceTrackers[chatID] = tracker
+		}
+
+		// If LastHumanMessageTime is not yet set, read the last non-Nova message from chat log
+		if tracker.LastHumanMessageTime.IsZero() && e.chatLogger != nil {
+			recentLogs, err := e.chatLogger.GetRecentMessages("group", chatID, 20)
+			if err == nil && len(recentLogs) > 0 {
+				for i := len(recentLogs) - 1; i >= 0; i-- {
+					if !recentLogs[i].IsNova {
+						if t, err := time.Parse(time.RFC3339, recentLogs[i].Timestamp); err == nil {
+							tracker.LastHumanMessageTime = t
+							break
+						}
 					}
 				}
+			}
+		}
+
+		lastHuman := tracker.LastHumanMessageTime
+		stage := tracker.Stage
+		lastTrigger := tracker.LastSilenceTrigger
+		e.mu.Unlock()
+
+		// Only trigger during active Egypt daytime (10:00 AM to 23:00 PM)
+		if hour >= 10 && hour <= 23 && !lastHuman.IsZero() {
+			silenceDuration := now.Sub(lastHuman)
+
+			// Stage 0 -> Stage 1: 3 hours of silence
+			if stage == 0 && silenceDuration >= 3*time.Hour && silenceDuration < 24*time.Hour {
+				e.mu.Lock()
+				tracker.Stage = 1
+				tracker.LastSilenceTrigger = now
+				e.mu.Unlock()
+
+				fmt.Printf("\n[⏳ Silence Breaker - Stage 1] 3h silence in chat %s -> Triggering Nova...\n", chatID)
+				prompt := "الجروب هادي ونايم بقاله 3 ساعات في عز النهار! ادخلي اكسري الصمت بنكشة أو إيفيه أو سؤال روش يصحّي الشات وتكيفي مع جو الجروب بروقان."
+				go e.triggerProactive(chatID, "group", prompt)
+				continue
+			}
+
+			// Stage 1 -> Stage 2: +6 hours additional silence (total >= 9h)
+			if stage == 1 && silenceDuration >= 9*time.Hour && now.Sub(lastTrigger) >= 6*time.Hour {
+				e.mu.Lock()
+				tracker.Stage = 2
+				tracker.LastSilenceTrigger = now
+				e.mu.Unlock()
+
+				fmt.Printf("\n[⏳ Silence Breaker - Stage 2] +6h additional silence in chat %s -> Triggering Nova final check...\n", chatID)
+				prompt := "الجروب مستمر في الهدوء التام بعد مرور 6 ساعات كمان ومحدش اتكلم خالص! ارمي كلمة خفيفة واطمني عليهم بروقان وقفشة خفيفة وقفلي على كدة."
+				go e.triggerProactive(chatID, "group", prompt)
+				continue
+			}
+
+			// Stage 2 -> Stage 3: Auto-shutdown/locked
+			if stage == 2 && now.Sub(lastTrigger) >= 1*time.Hour {
+				e.mu.Lock()
+				tracker.Stage = 3
+				e.mu.Unlock()
+				fmt.Printf("\n[🔒 Silence Breaker - Locked] Chat %s silence breaker is now locked until a human writes.\n", chatID)
 			}
 		}
 
 		// Trigger 4: Morning Landmark (e.g. Friday 10:30 AM or Sunday 10:00 AM)
 		if (weekday == time.Friday && hour == 10 && now.Minute() >= 30 && now.Minute() <= 35) ||
 			(weekday == time.Sunday && hour == 10 && now.Minute() >= 0 && now.Minute() <= 5) {
-			if e.canTriggerAuto(chatID, 12*time.Hour) {
+			if e.canTriggerAuto(chatID) {
 				e.mu.Lock()
-				e.lastAutoTrigger[chatID] = now
+				tracker.LastSilenceTrigger = now
 				e.mu.Unlock()
 
 				prompt := "صباح يوم جديد رايق وجميل على الجروب! ادخلي صبحي على الكل بكلام دافي وخفيف دم بالعامية المصرية وتمنيات بيوم جميل ورايق."

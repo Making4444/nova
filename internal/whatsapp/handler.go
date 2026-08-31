@@ -29,6 +29,7 @@ type EventHandler struct {
 	waClient        *Client
 	aiClient        *ai.OpenRouterClient
 	ttsClient       *voice.OpenRouterTTS
+	groqSTT         *voice.GroqSTT
 	chatLogger      *storage.ChatLogger
 	memStore        *storage.MemoryStore
 	adminState      *admin.State
@@ -70,6 +71,11 @@ func (h *EventHandler) SetTTSClient(tts *voice.OpenRouterTTS) {
 	h.ttsClient = tts
 }
 
+// SetGroqSTT attaches the Groq Whisper speech-to-text engine.
+func (h *EventHandler) SetGroqSTT(stt *voice.GroqSTT) {
+	h.groqSTT = stt
+}
+
 // SetSchedulerEngine attaches the scheduler engine.
 func (h *EventHandler) SetSchedulerEngine(eng SchedulerEngineInterface) {
 	h.schedulerEngine = eng
@@ -78,6 +84,54 @@ func (h *EventHandler) SetSchedulerEngine(eng SchedulerEngineInterface) {
 // SetStatsProvider attaches stats metrics provider for /status command.
 func (h *EventHandler) SetStatsProvider(stats admin.StatsProvider) {
 	h.statsProvider = stats
+}
+
+// ArchiveChatSession summarizes and archives the current chat, updating user profiles.
+func (h *EventHandler) ArchiveChatSession(ctx context.Context, chatType, chatID string) (string, int, error) {
+	transcript, msgs, err := h.chatLogger.GetAllMessages(chatType, chatID)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to read chat messages: %w", err)
+	}
+	if len(msgs) == 0 {
+		return "", 0, fmt.Errorf("chat has no messages to archive")
+	}
+
+	summary, userProfiles, sumErr := h.aiClient.SummarizeChatHistory(ctx, transcript)
+	if sumErr != nil {
+		summary = fmt.Sprintf("أرشفة تلقائية لـ %d رسالة. (فشل تلخيص الذكاء الاصطناعي: %v)", len(msgs), sumErr)
+	}
+
+	// Update user profile cards
+	for userKey, profileNote := range userProfiles {
+		_ = h.memStore.UpdateUserProfile(userKey, userKey, profileNote)
+	}
+
+	idx, archivedPath, err := h.chatLogger.ArchiveCurrentChat(chatType, chatID)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to archive chat file: %w", err)
+	}
+
+	_ = h.chatLogger.SaveSummary(chatType, chatID, idx, summary)
+
+	return archivedPath, idx, nil
+}
+
+// RestoreArchivedChatSession restores a previously archived chat by index.
+func (h *EventHandler) RestoreArchivedChatSession(chatType, chatID string, archiveIndex int) error {
+	return h.chatLogger.RestoreArchivedChat(chatType, chatID, archiveIndex)
+}
+
+// ListChatArchives lists all archived chats for a given chat ID.
+func (h *EventHandler) ListChatArchives(chatType, chatID string) ([]string, error) {
+	archives, err := h.chatLogger.ListArchivedChats(chatType, chatID)
+	if err != nil {
+		return nil, err
+	}
+	var res []string
+	for _, a := range archives {
+		res = append(res, fmt.Sprintf("رقم %d — %d رسالة (%s)", a.Index, a.MessagesCount, a.ModTime.Format("2006-01-02 15:04")))
+	}
+	return res, nil
 }
 
 func (h *EventHandler) markAsNovaSent(msgID string) {
@@ -163,9 +217,6 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// Extract message data
 	text, isReply, repliedMsgID, repliedSender, repliedText := ExtractTextAndReply(evt.Message)
-	if text == "" {
-		return
-	}
 
 	chatID := evt.Info.Chat.String()
 	senderID := evt.Info.Sender.ToNonAD().String()
@@ -180,7 +231,32 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		chatType = "group"
 	}
 
-	// 2. Rule 7: Record EVERY incoming message in the JSONL chat log first
+	// 1.5 Handle Voice Note via Groq Whisper STT
+	isVoiceIncoming := (evt.Message.GetAudioMessage() != nil)
+	if isVoiceIncoming && h.groqSTT != nil {
+		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 25*time.Second)
+		audioBytes, dlErr := h.waClient.WAClient.Download(downloadCtx, evt.Message.GetAudioMessage())
+		downloadCancel()
+
+		if dlErr == nil && len(audioBytes) > 0 {
+			transcribeCtx, transcribeCancel := context.WithTimeout(context.Background(), 25*time.Second)
+			transcribedText, sttErr := h.groqSTT.TranscribeAudio(transcribeCtx, audioBytes, "voice.ogg")
+			transcribeCancel()
+
+			if sttErr == nil && strings.TrimSpace(transcribedText) != "" {
+				text = transcribedText
+				fmt.Printf("\n[🎙️ Groq Whisper STT] Transcribed voice from %s (%s): %q\n", senderName, senderID, transcribedText)
+			} else if sttErr != nil {
+				h.logger.Warnf("Groq Whisper transcription failed for message %s: %v", messageID, sttErr)
+			}
+		}
+	}
+
+	if text == "" {
+		return
+	}
+
+	// 2. Record EVERY incoming message in the JSONL chat log first
 	logEntry := storage.LogMessage{
 		MessageID:   messageID,
 		SenderID:    senderID,
@@ -199,9 +275,9 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	// Clean text from invisible unicode marks
 	cleanText := admin.CleanInvisibleMarks(text)
 
-	// 3. Command Check (Available to any user)
+	// 3. Command Check (Admin Commands & Archiving)
 	if h.adminState != nil {
-		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, cleanText, h.statsProvider)
+		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, cleanText, h.statsProvider, h)
 		if cmdRes.Handled {
 			h.logger.Infof("Command executed by %s (%s): %s", senderName, senderID, cleanText)
 			fmt.Printf("\n[👑 Command Executed] %s (%s) executed %q in chat %s\n", senderName, senderID, cleanText, chatID)
@@ -210,16 +286,26 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 			cancel()
 			if err != nil {
 				h.logger.Errorf("Failed to send command reply: %v", err)
-				fmt.Printf("[❌ Command Error] Failed to send reply: %v\n", err)
 			}
 			return
 		}
 	}
 
-	// 4. Trigger Matching ("يا نوفا" in text or reply)
-	triggerMatched := trigger.CheckTrigger(cleanText, isReply, admin.CleanInvisibleMarks(repliedText))
+	// 4. Trigger Matching ("يا نوفا", "نوفا", @Nova, Tagging, or Reply)
+	var mentionedJIDs []string
+	if evt.Message.GetExtendedTextMessage() != nil && evt.Message.GetExtendedTextMessage().GetContextInfo() != nil {
+		mentionedJIDs = evt.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID()
+	}
 
-	// Feed message to rush tracker for Trigger 3
+	triggerMatched := trigger.CheckTriggerWithMentions(
+		cleanText,
+		isReply,
+		admin.CleanInvisibleMarks(repliedText),
+		mentionedJIDs,
+		h.waClient.GetUserJID().String(),
+	)
+
+	// Feed message to rush tracker & silence breaker
 	if h.schedulerEngine != nil && evt.Info.IsGroup {
 		h.schedulerEngine.RecordIncomingMessageForRush(chatID, triggerMatched)
 	}
@@ -257,14 +343,14 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// Download media (images, PDFs) from direct message or quoted reply if present
+	// Download media (images only; PDFs ignored) from direct message or quoted reply
 	downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, h.waClient.WAClient, evt.Message)
 	downloadCancel()
 	if mediaErr != nil {
 		h.logger.Warnf("Could not download media for message %s: %v", messageID, mediaErr)
 	} else if mediaDataURL != nil {
-		h.logger.Infof("Successfully downloaded and attached media for message %s", messageID)
+		h.logger.Infof("Successfully downloaded and attached image for message %s", messageID)
 	}
 
 	// Dynamic history limit from admin state or default
@@ -294,7 +380,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// 8. Call OpenRouter AI
+	// 8. Call Multi-Model AI Router
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
 
@@ -322,8 +408,18 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		targetMsgID = *aiResp.ReplyToMessageID
 	}
 
+	// 9.5 Send Optional Emoji Reaction if the AI decided to react!
+	if aiResp.ReactionEmoji != nil && *aiResp.ReactionEmoji != "" {
+		emoji := strings.TrimSpace(*aiResp.ReactionEmoji)
+		if emoji != "" {
+			reactCtx, reactCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_ = h.waClient.SendReaction(reactCtx, evt.Info.Chat, targetMsgID, evt.Info.Sender.String(), emoji)
+			reactCancel()
+			fmt.Printf("[✨ WhatsApp Reaction] Nova reacted with emoji %s to message %s\n", emoji, targetMsgID)
+		}
+	}
+
 	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
-	isVoiceIncoming := (evt.Message.GetAudioMessage() != nil)
 	isVoiceRequested := strings.Contains(cleanText, "فويس") || strings.Contains(cleanText, "صوتك") ||
 		strings.Contains(cleanText, "ريكورد") || strings.Contains(cleanText, "صوتي") ||
 		strings.Contains(cleanText, "بصوتك") || strings.Contains(cleanText, "اتكلم")

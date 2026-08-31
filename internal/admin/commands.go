@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // CommandResult represents the response of an executed admin command.
@@ -33,7 +35,14 @@ func CleanInvisibleMarks(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// HandleAdminCommand parses and executes any admin command sent by any user or owner.
+// ChatArchiver interface allows archiving, summarizing, and restoring chat logs.
+type ChatArchiver interface {
+	ArchiveChatSession(ctx context.Context, chatType, chatID string) (string, int, error)
+	RestoreArchivedChatSession(chatType, chatID string, archiveIndex int) error
+	ListChatArchives(chatType, chatID string) ([]string, error)
+}
+
+// HandleAdminCommand parses and executes admin and archive commands.
 func HandleAdminCommand(
 	state *State,
 	chatID string,
@@ -42,6 +51,7 @@ func HandleAdminCommand(
 	isFromMe bool,
 	text string,
 	stats StatsProvider,
+	archiver ChatArchiver,
 ) CommandResult {
 	cleanText := CleanInvisibleMarks(text)
 	if cleanText == "" {
@@ -61,9 +71,13 @@ func HandleAdminCommand(
 	}
 
 	cmd := strings.ToLower(parts[0])
+	isAdmin := state.IsAdmin(senderID, senderName, isFromMe)
 
 	switch cmd {
 	case "shutdown", "suhtdown", "قفل", "اغلاق", "إغلاق":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
 		_ = state.SetShutdown(true)
 		return CommandResult{
 			Handled:   true,
@@ -71,6 +85,9 @@ func HandleAdminCommand(
 		}
 
 	case "start", "resume", "restart", "تشغيل", "فتح":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
 		_ = state.SetShutdown(false)
 		return CommandResult{
 			Handled:   true,
@@ -78,6 +95,9 @@ func HandleAdminCommand(
 		}
 
 	case "set", "ضبط":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
 		if len(parts) < 2 {
 			currentLimit := state.GetChatLimit(chatID, 0)
 			limitStr := fmt.Sprintf("%d", currentLimit)
@@ -117,6 +137,9 @@ func HandleAdminCommand(
 		}
 
 	case "auto", "triggers", "autotriggers", "تلقائي":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
 		if len(parts) < 2 {
 			isAuto := state.IsAutoTriggersEnabled(chatID)
 			statusStr := "❌ معطلة"
@@ -134,7 +157,7 @@ func HandleAdminCommand(
 			_ = state.SetAutoTriggers(chatID, true)
 			return CommandResult{
 				Handled:   true,
-				ReplyText: "🤖 *تم تفعيل الـ 5 مشغلات التلقائية في هذا الجروب بنجاح!*\n(كسر الصمت بعد 3 ساعات، السؤال عن الغايبين، التفاعل مع فوران الرسائل، تحية الصباح، والترحيب بالأعضاء الجدد).",
+				ReplyText: "🤖 *تم تفعيل المشغلات التلقائية المتدرجة في هذا الجروب بنجاح!*\n(كسر الصمت المتدرج بعد 3 ساعات ثم 6 ساعات ثم القفل التلقائي، التفاعل مع فوران الرسائل، تحية الصباح، والترحيب بالأعضاء الجدد).",
 			}
 		} else if action == "off" || action == "0" || action == "ايقاف" || action == "تعطيل" {
 			_ = state.SetAutoTriggers(chatID, false)
@@ -147,6 +170,122 @@ func HandleAdminCommand(
 		return CommandResult{
 			Handled:   true,
 			ReplyText: "⚠️ اكتب `/auto on` للتفعيل أو `/auto off` للإيقاف.",
+		}
+
+	case "archive", "ارشيف", "أرشيف", "summarize", "تلخيص":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+		if archiver == nil {
+			return CommandResult{Handled: true, ReplyText: "⚠️ خدمة الأرشفة والتلخيص غير متصلة حالياً."}
+		}
+
+		chatType := "private"
+		if strings.Contains(chatID, "@g.us") {
+			chatType = "group"
+		}
+
+		subCmd := "new"
+		if len(parts) > 1 {
+			subCmd = strings.ToLower(parts[1])
+		}
+
+		if subCmd == "list" || subCmd == "عرض" || subCmd == "قائمة" {
+			list, err := archiver.ListChatArchives(chatType, chatID)
+			if err != nil || len(list) == 0 {
+				return CommandResult{
+					Handled:   true,
+					ReplyText: "📭 لا توجد محادثات سابقة مؤرشفة لهذا الشات حتى الآن.",
+				}
+			}
+			var b strings.Builder
+			b.WriteString("📂 *قائمة المحادثات المؤرشفة لهذا الشات:*\n\n")
+			for _, item := range list {
+				b.WriteString(fmt.Sprintf("• %s\n", item))
+			}
+			b.WriteString("\n💡 لاسترجاع أي محادثة اكتب: `/archive load <رقم المحادثة>`")
+			return CommandResult{
+				Handled:   true,
+				ReplyText: b.String(),
+			}
+		}
+
+		if subCmd == "load" || subCmd == "restore" || subCmd == "استرجاع" {
+			if len(parts) < 3 {
+				return CommandResult{
+					Handled:   true,
+					ReplyText: "⚠️ يرجى تحديد رقم المحادثة، مثلاً: `/archive load 1`",
+				}
+			}
+			idx, err := strconv.Atoi(parts[2])
+			if err != nil || idx < 1 {
+				return CommandResult{
+					Handled:   true,
+					ReplyText: "⚠️ رقم محادثة غير صالح.",
+				}
+			}
+			if err := archiver.RestoreArchivedChatSession(chatType, chatID, idx); err != nil {
+				return CommandResult{
+					Handled:   true,
+					ReplyText: fmt.Sprintf("❌ فشل استرجاع المحادثة رقم %d: %v", idx, err),
+				}
+			}
+			return CommandResult{
+				Handled:   true,
+				ReplyText: fmt.Sprintf("✅ *تم بنجاح استرجاع المحادثة المؤرشفة رقم %d وتفعيلها كشات نشط!*", idx),
+			}
+		}
+
+		// Default: Archive Current Chat and start fresh
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		summaryPath, archiveIdx, err := archiver.ArchiveChatSession(ctx, chatType, chatID)
+		if err != nil {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: fmt.Sprintf("❌ فشل أرشفة المحادثة: %v", err),
+			}
+		}
+
+		return CommandResult{
+			Handled:   true,
+			ReplyText: fmt.Sprintf("🎉 *تمت أرشفة وتلخيص المحادثة الحالية بنجاح!*\n\n• *رقم الأرشيف:* `%d`\n• *ملف الملخص وبطاقات المستخدمين:* `%s`\n• *الحالة:* تم بدء ملف محادثة جديد ونظيف تماماً 🚀\n\n💡 يمكنك استرجاع المحادثة القديمة في أي وقت بكتابة: `/archive load %d`", archiveIdx, summaryPath, archiveIdx),
+		}
+
+	case "restore", "استرجاع":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+		if archiver == nil {
+			return CommandResult{Handled: true, ReplyText: "⚠️ خدمة الأرشفة والتلخيص غير متصلة حالياً."}
+		}
+		if len(parts) < 2 {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "⚠️ اكتب رقم المحادثة المراد استرجاعها، مثلاً: `/restore 1`",
+			}
+		}
+		idx, err := strconv.Atoi(parts[1])
+		if err != nil || idx < 1 {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "⚠️ رقم محادثة غير صالح.",
+			}
+		}
+		chatType := "private"
+		if strings.Contains(chatID, "@g.us") {
+			chatType = "group"
+		}
+		if err := archiver.RestoreArchivedChatSession(chatType, chatID, idx); err != nil {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: fmt.Sprintf("❌ فشل استرجاع المحادثة رقم %d: %v", idx, err),
+			}
+		}
+		return CommandResult{
+			Handled:   true,
+			ReplyText: fmt.Sprintf("✅ *تم بنجاح استرجاع المحادثة المؤرشفة رقم %d وتفعيلها كشات نشط!*", idx),
 		}
 
 	case "status", "statue", "stats", "حالة", "تقرير":
@@ -180,9 +319,13 @@ func HandleAdminCommand(
 		msg := fmt.Sprintf("📊 *لوحة معلومات وحالة نوفا (Nova Status)*\n\n"+
 			"• *حالة السيرفر:* %s\n"+
 			"• *مدة التشغيل (Uptime):* %s\n"+
-			"• *النموذج النشط:* `%s`\n"+
+			"• *النماذج النشطة (Multi-Model):*\n"+
+			"  - 🗣️ *الحوار والأسلوب:* `%s`\n"+
+			"  - 🧮 *الرياضيات:* `z-ai/glm-5.2`\n"+
+			"  - 🖼️ *الرؤية والصور:* `openai/gpt-5.6-luna`\n"+
+			"  - 🎙️ *الصوت (STT):* `whisper-large-v3` (Groq)\n"+
 			"• *حد سياق هذا الشات:* `%s`\n"+
-			"• *المشغلات التلقائية في الجروب:* %s\n"+
+			"• *المشغلات التلقائية:* %s\n"+
 			"• *عدد الشاتات المسجلة:* %d\n"+
 			"• *ملفات ذاكرة المستخدمين:* %d\n"+
 			"• *المواعيد والمتابعات المجدولة:* %d\n",

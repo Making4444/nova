@@ -26,29 +26,61 @@ type TaskScheduler interface {
 	ScheduleTask(chatID, chatType, targetUser, reason, durationStr string) string
 }
 
-// OpenRouterClient interacts with OpenRouter API to generate Nova responses with Search, Scheduler, and Vision capabilities.
+// UserMemoryUpdater represents an interface for saving or updating user facts.
+type UserMemoryUpdater interface {
+	AppendMemoryNote(userID, userName, note string) error
+}
+
+// OpenRouterClient interacts with OpenRouter API with multi-model routing (Chat, Math, Vision) and fast Groq classification.
 type OpenRouterClient struct {
 	apiKey              string
-	model               string
+	modelChat           string
+	modelMath           string
+	modelVision         string
+	groqRouter          *GroqRouter
 	systemPrompt        string
 	searchEngine        *SearchEngine
 	scheduler           TaskScheduler
+	memoryUpdater       UserMemoryUpdater
 	httpClient          *http.Client
 	mu                  sync.Mutex
 	consecutiveFailures int
 }
 
-// NewOpenRouterClient creates a new client for OpenRouter.
-func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
+// NewMultiModelClient creates a new client supporting multi-model routing.
+func NewMultiModelClient(
+	apiKey string,
+	modelChat, modelMath, modelVision string,
+	groqRouter *GroqRouter,
+	systemPrompt string,
+) *OpenRouterClient {
+	if modelChat == "" {
+		modelChat = "qwen/qwen3-235b-a22b-2507"
+	}
+	if modelMath == "" {
+		modelMath = "z-ai/glm-5.2"
+	}
+	if modelVision == "" {
+		modelVision = "openai/gpt-5.6-luna"
+	}
+
 	return &OpenRouterClient{
 		apiKey:       apiKey,
-		model:        model,
+		modelChat:    modelChat,
+		modelMath:    modelMath,
+		modelVision:  modelVision,
+		groqRouter:   groqRouter,
 		systemPrompt: systemPrompt,
 		searchEngine: NewSearchEngine(apiKey, "perplexity/sonar"),
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 75 * time.Second,
 		},
 	}
+}
+
+// NewOpenRouterClient creates a backwards-compatible client.
+func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
+	return NewMultiModelClient(apiKey, model, "z-ai/glm-5.2", "openai/gpt-5.6-luna", nil, systemPrompt)
 }
 
 // SetScheduler attaches a task scheduler instance to the AI client.
@@ -56,6 +88,20 @@ func (c *OpenRouterClient) SetScheduler(scheduler TaskScheduler) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.scheduler = scheduler
+}
+
+// SetMemoryUpdater attaches a memory store instance for updating user profiles.
+func (c *OpenRouterClient) SetMemoryUpdater(updater UserMemoryUpdater) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.memoryUpdater = updater
+}
+
+// SetGroqRouter attaches the fast query classifier router.
+func (c *OpenRouterClient) SetGroqRouter(router *GroqRouter) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.groqRouter = router
 }
 
 type openRouterMessage struct {
@@ -141,6 +187,50 @@ var scheduleFollowupTool = toolDefinition{
 	},
 }
 
+var solveMathProblemTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "solve_math_problem",
+		Description: "استدعاء نموذج الرياضيات الخارق GLM-5.2 لحل أي مسألة رياضية أو تفاضل وتكامل أو هندسة أو خوارزميات معقدة بدقة متناهية",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"problem": map[string]interface{}{
+					"type":        "string",
+					"description": "نص المسألة الرياضية أو المعادلة بالتفصيل",
+				},
+			},
+			"required": []string{"problem"},
+		},
+	},
+}
+
+var updateUserMemoryTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "update_user_memory",
+		Description: "حفظ أو تحديث معلومة مهمة عن المستخدم في ملف ذاكرته الدائمة",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"user_id": map[string]interface{}{
+					"type":        "string",
+					"description": "معرف المستخدم (sender_id)",
+				},
+				"user_name": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم المستخدم",
+				},
+				"note": map[string]interface{}{
+					"type":        "string",
+					"description": "المعلومة أو الملاحظة الجديدة لحفظها",
+				},
+			},
+			"required": []string{"note"},
+		},
+	},
+}
+
 type openRouterRequest struct {
 	Model    string              `json:"model"`
 	Messages []openRouterMessage `json:"messages"`
@@ -159,17 +249,32 @@ type openRouterResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// GenerateResponse sends the payload to OpenRouter, executes tool calls, and parses the final JSON response.
+// GenerateResponse sends the payload to OpenRouter using multi-model smart routing.
 func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigger.RequestPayload) (*ResponsePayload, error) {
 	if c.apiKey == "" {
 		return nil, errors.New("OPENROUTER_API_KEY is not set")
 	}
 
-	// Prepare user message content (Multimodal if MediaDataURL exists)
-	var userContent interface{}
+	// 1. Smart Model Selection
+	selectedModel := c.modelChat
 	mediaURL := payload.MediaDataURL
 
-	// Temporarily remove base64 from JSON payload text to avoid inflating token size in text
+	if mediaURL != nil && *mediaURL != "" {
+		selectedModel = c.modelVision
+		fmt.Printf("\n[🧠 Smart Router] Image attached -> Routed to Vision Model: %s\n", selectedModel)
+	} else if c.groqRouter != nil {
+		category := c.groqRouter.ClassifyQuery(ctx, payload.MessageText)
+		if category == CategoryMath {
+			selectedModel = c.modelMath
+			fmt.Printf("\n[🧠 Smart Router] Math problem detected by Groq -> Routed to Math Specialist: %s\n", selectedModel)
+		} else {
+			selectedModel = c.modelChat
+			fmt.Printf("\n[🧠 Smart Router] Conversational query -> Routed to Main Chat Model: %s\n", selectedModel)
+		}
+	}
+
+	// Prepare user message content (Multimodal if MediaDataURL exists)
+	var userContent interface{}
 	payloadForText := *payload
 	payloadForText.MediaDataURL = nil
 	payloadBytes, err := json.Marshal(payloadForText)
@@ -199,8 +304,8 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		{Role: "user", Content: userContent},
 	}
 
-	// 1. Execute initial attempt with Tool Calling loop
-	rawResp, usedSearch, err := c.executeConversation(ctx, messages, payload)
+	// 2. Execute initial attempt with Tool Calling loop
+	rawResp, usedSearch, err := c.executeConversation(ctx, selectedModel, messages, payload)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("openrouter request failed: %w", err)
@@ -217,7 +322,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		return parsed, nil
 	}
 
-	// 2. Single retry with correction prompt if JSON parsing fails
+	// 3. Single retry with correction prompt if JSON parsing fails
 	retryMessages := append(messages,
 		openRouterMessage{Role: "assistant", Content: rawResp},
 		openRouterMessage{
@@ -226,7 +331,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		},
 	)
 
-	rawRetryResp, retryUsedSearch, retryErr := c.executeConversation(ctx, retryMessages, payload)
+	rawRetryResp, retryUsedSearch, retryErr := c.executeConversation(ctx, selectedModel, retryMessages, payload)
 	if retryErr != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("retry openrouter request failed: %w", retryErr)
@@ -248,19 +353,44 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	return parsedRetry, nil
 }
 
-// executeConversation executes the message list, handling any tool calls (web_search, schedule_followup).
-func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, error) {
+// SolveMathDirectly invokes GLM-5.2 directly to solve mathematical questions.
+func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem string) (string, error) {
+	messages := []openRouterMessage{
+		{
+			Role:    "system",
+			Content: "You are GLM-5.2, an expert mathematical, logical, and scientific reasoning engine. Solve the provided problem step-by-step with extreme accuracy, clarity, and precision. Provide complete mathematical derivations, answers, and concise explanations in Arabic.",
+		},
+		{
+			Role:    "user",
+			Content: mathProblem,
+		},
+	}
+
+	choiceMsg, err := c.callAPI(ctx, c.modelMath, messages, nil)
+	if err != nil {
+		return "", err
+	}
+
+	if contentStr, ok := choiceMsg.Content.(string); ok {
+		return strings.TrimSpace(contentStr), nil
+	}
+	return "", fmt.Errorf("invalid math response format")
+}
+
+// executeConversation executes the message list, handling tool calls (web_search, schedule_followup, solve_math_problem, update_user_memory).
+func (c *OpenRouterClient) executeConversation(ctx context.Context, model string, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, error) {
 	currentMessages := make([]openRouterMessage, len(messages))
 	copy(currentMessages, messages)
 	usedSearch := false
 
+	tools := []toolDefinition{webSearchTool, scheduleFollowupTool, solveMathProblemTool, updateUserMemoryTool}
+
 	for step := 0; step < maxToolSteps; step++ {
-		choiceMsg, err := c.callAPI(ctx, currentMessages)
+		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
 		if err != nil {
 			return "", usedSearch, err
 		}
 
-		// If the model did not request any tool calls, return the text content
 		if len(choiceMsg.ToolCalls) == 0 {
 			if contentStr, ok := choiceMsg.Content.(string); ok {
 				return strings.TrimSpace(contentStr), usedSearch, nil
@@ -268,7 +398,6 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 			return "", usedSearch, fmt.Errorf("unexpected content format in model response")
 		}
 
-		// Process tool calls
 		currentMessages = append(currentMessages, choiceMsg)
 
 		for _, call := range choiceMsg.ToolCalls {
@@ -279,7 +408,6 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 					Query string `json:"query"`
 				}
 				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-
 				query := strings.TrimSpace(args.Query)
 				if query == "" {
 					query = call.Function.Arguments
@@ -288,16 +416,31 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 				fmt.Printf("\n[🔍 Web Search] Query: %q\n", query)
 				searchResult, searchErr := c.searchEngine.Search(ctx, query)
 				if searchErr != nil {
-					fmt.Printf("[⚠️ Web Search] Error: %v\n", searchErr)
 					searchResult = fmt.Sprintf("فشل البحث على الإنترنت: %v", searchErr)
-				} else {
-					fmt.Printf("[✅ Web Search] Success: Perplexity returned %d chars\n", len(searchResult))
 				}
 
 				currentMessages = append(currentMessages, openRouterMessage{
 					Role:       "tool",
 					ToolCallID: call.ID,
 					Content:    searchResult,
+				})
+
+			case "solve_math_problem":
+				var args struct {
+					Problem string `json:"problem"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				fmt.Printf("\n[🧮 Math Consultant] Consulting GLM-5.2 on problem: %q\n", args.Problem)
+
+				mathSolution, mathErr := c.SolveMathDirectly(ctx, args.Problem)
+				if mathErr != nil {
+					mathSolution = fmt.Sprintf("فشل حل المسألة الرياضية: %v", mathErr)
+				}
+
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    mathSolution,
 				})
 
 			case "schedule_followup":
@@ -307,8 +450,6 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 					TargetUser string `json:"target_user"`
 				}
 				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-
-				fmt.Printf("\n[⏰ Scheduler Tool] Nova scheduled follow-up: duration=%q, reason=%q, user=%q\n", args.Duration, args.Reason, args.TargetUser)
 
 				toolResult := "تم تسجيل المتابعة المجدولة في السيرفر بنجاح وسيتم تذكيرك بها."
 				c.mu.Lock()
@@ -329,6 +470,38 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 					ToolCallID: call.ID,
 					Content:    toolResult,
 				})
+
+			case "update_user_memory":
+				var args struct {
+					UserID   string `json:"user_id"`
+					UserName string `json:"user_name"`
+					Note     string `json:"note"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+
+				uID := args.UserID
+				if uID == "" && payload != nil {
+					uID = payload.SenderID
+				}
+				uName := args.UserName
+				if uName == "" && payload != nil {
+					uName = payload.SenderName
+				}
+
+				toolResult := "تم حفظ الملاحظة في ذاكرة المستخدم بنجاح."
+				c.mu.Lock()
+				mem := c.memoryUpdater
+				c.mu.Unlock()
+
+				if mem != nil && uID != "" && args.Note != "" {
+					_ = mem.AppendMemoryNote(uID, uName, args.Note)
+				}
+
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    toolResult,
+				})
 			}
 		}
 	}
@@ -336,11 +509,11 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, messages []o
 	return "", usedSearch, fmt.Errorf("exceeded maximum tool calling steps")
 }
 
-func (c *OpenRouterClient) callAPI(ctx context.Context, messages []openRouterMessage) (openRouterMessage, error) {
+func (c *OpenRouterClient) callAPI(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition) (openRouterMessage, error) {
 	reqBody := openRouterRequest{
-		Model:    c.model,
+		Model:    model,
 		Messages: messages,
-		Tools:    []toolDefinition{webSearchTool, scheduleFollowupTool},
+		Tools:    tools,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -389,6 +562,53 @@ func (c *OpenRouterClient) callAPI(ctx context.Context, messages []openRouterMes
 	return orResp.Choices[0].Message, nil
 }
 
+// SummarizeChatHistory analyzes raw messages from a conversation and generates a structured summary + user profiles.
+func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesText string) (string, map[string]string, error) {
+	if c.apiKey == "" {
+		return "", nil, errors.New("OPENROUTER_API_KEY is not set")
+	}
+
+	systemPrompt := `أنت محلل محادثات ذكي ومساعد لبوت نوفا. مهمتك تحليل سجل المحادثة الكامل وتحويله إلى:
+1. "summary": ملخص شامل ومختصر للمحادثة، يبرز أهم المواضيع، النكات، الأحداث، والقرارات المتخذة.
+2. "users": قاموس يحتوي على بطاقة تعريفية لكل مستخدم شارك في الشات (المفتاح هو user_id أو اسمه، والقيمة هي ملخص شخصيته واهتماماته ومعلومات عنه).
+
+أرجع النتيجة بصيغة JSON نظيفة فقط:
+{
+  "summary": "نص الملخص الشامل للمحادثة بصيغة Markdown",
+  "users": {
+    "user_id_or_name": "معلومات وبطاقة المستخدم"
+  }
+}`
+
+	reqMessages := []openRouterMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: messagesText},
+	}
+
+	choiceMsg, err := c.callAPI(ctx, c.modelChat, reqMessages, nil)
+	if err != nil {
+		return "", nil, err
+	}
+
+	contentStr, ok := choiceMsg.Content.(string)
+	if !ok {
+		return "", nil, fmt.Errorf("unexpected summary response format")
+	}
+
+	jsonStr := ExtractJSON(contentStr)
+	var result struct {
+		Summary string            `json:"summary"`
+		Users   map[string]string `json:"users"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		// Fallback: use raw text as summary
+		return contentStr, nil, nil
+	}
+
+	return result.Summary, result.Users, nil
+}
+
 func (c *OpenRouterClient) recordSuccess() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -400,3 +620,4 @@ func (c *OpenRouterClient) recordFailure() {
 	defer c.mu.Unlock()
 	c.consecutiveFailures++
 }
+

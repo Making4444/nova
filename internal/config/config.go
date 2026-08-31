@@ -12,7 +12,13 @@ import (
 // Config holds all configuration parameters for Nova Bot.
 type Config struct {
 	OpenRouterAPIKey    string
-	OpenRouterModel     string
+	ModelChat           string
+	ModelMath           string
+	ModelVision         string
+	GroqAPIKey          string
+	ModelWhisper        string
+	ModelRouterGroq     string
+	OpenRouterModel     string // Default chat model fallback
 	SystemPrompt        string
 	SessionDBPath       string
 	ChatCooldownSeconds int
@@ -27,13 +33,34 @@ func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if apiKey == "" {
-		// We still allow starting, but log a warning if needed or report error when calling AI
+	groqKey := os.Getenv("GROQ_API_KEY")
+
+	modelChat := os.Getenv("MODEL_CHAT")
+	if modelChat == "" {
+		modelChat = os.Getenv("OPENROUTER_MODEL")
+		if modelChat == "" {
+			modelChat = "qwen/qwen3-235b-a22b-2507"
+		}
 	}
 
-	model := os.Getenv("OPENROUTER_MODEL")
-	if model == "" {
-		model = "openai/gpt-4o-mini"
+	modelMath := os.Getenv("MODEL_MATH")
+	if modelMath == "" {
+		modelMath = "z-ai/glm-5.2"
+	}
+
+	modelVision := os.Getenv("MODEL_VISION")
+	if modelVision == "" {
+		modelVision = "openai/gpt-5.6-luna"
+	}
+
+	modelWhisper := os.Getenv("MODEL_WHISPER")
+	if modelWhisper == "" {
+		modelWhisper = "whisper-large-v3"
+	}
+
+	modelRouterGroq := os.Getenv("MODEL_ROUTER_GROQ")
+	if modelRouterGroq == "" {
+		modelRouterGroq = "qwen/qwen3.8-27b"
 	}
 
 	promptPath := os.Getenv("SYSTEM_PROMPT_PATH")
@@ -81,7 +108,13 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		OpenRouterAPIKey:    apiKey,
-		OpenRouterModel:     model,
+		ModelChat:           modelChat,
+		ModelMath:           modelMath,
+		ModelVision:         modelVision,
+		GroqAPIKey:          groqKey,
+		ModelWhisper:        modelWhisper,
+		ModelRouterGroq:     modelRouterGroq,
+		OpenRouterModel:     modelChat,
 		SystemPrompt:        string(promptBytes),
 		SessionDBPath:       sessionDB,
 		ChatCooldownSeconds: cooldownSec,

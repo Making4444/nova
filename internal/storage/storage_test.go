@@ -128,4 +128,73 @@ func TestMemoryStore(t *testing.T) {
 	if !strings.Contains(memAfter, "بيحب القهوة السادة") {
 		t.Errorf("expected memory to contain note, got: %s", memAfter)
 	}
+
+	// Update user profile test
+	if err := memStore.UpdateUserProfile(userID, "Ahmed", "- الاهتمامات: برمجة وذكاء اصطناعي\n- الطبع: هادي ورايق"); err != nil {
+		t.Fatalf("UpdateUserProfile failed: %v", err)
+	}
+	profileMem, _ := memStore.GetUserMemory(userID)
+	if !strings.Contains(profileMem, "ذكاء اصطناعي") {
+		t.Errorf("expected profile to contain new info, got: %s", profileMem)
+	}
 }
+
+func TestChatLoggerArchiving(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "novabot_archive_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	logger, err := NewChatLogger(tempDir)
+	if err != nil {
+		t.Fatalf("NewChatLogger failed: %v", err)
+	}
+
+	chatID := "120363429594564463@g.us"
+
+	// 1. Populate chat
+	_ = logger.AppendMessage("group", chatID, LogMessage{MessageID: "M1", Text: "رسالة 1"})
+	_ = logger.AppendMessage("group", chatID, LogMessage{MessageID: "M2", Text: "رسالة 2"})
+
+	transcript, msgs, err := logger.GetAllMessages("group", chatID)
+	if err != nil || len(msgs) != 2 || !strings.Contains(transcript, "رسالة 1") {
+		t.Fatalf("GetAllMessages failed: %v, msgs=%d", err, len(msgs))
+	}
+
+	// 2. Archive chat
+	idx, archPath, err := logger.ArchiveCurrentChat("group", chatID)
+	if err != nil || idx != 1 {
+		t.Fatalf("ArchiveCurrentChat failed: %v, idx=%d", err, idx)
+	}
+	if _, err := os.Stat(archPath); os.IsNotExist(err) {
+		t.Fatalf("archived file not found at %s", archPath)
+	}
+
+	// 3. Active chat should now be empty
+	activeMsgs, _ := logger.GetRecentMessages("group", chatID, 0)
+	if len(activeMsgs) != 0 {
+		t.Fatalf("expected empty active chat after archive, got %d", len(activeMsgs))
+	}
+
+	// 4. Save Summary
+	if err := logger.SaveSummary("group", chatID, idx, "## ملخص المحادثة الأولى\n- اتكلموا في البرمجة."); err != nil {
+		t.Fatalf("SaveSummary failed: %v", err)
+	}
+
+	// 5. List Archives
+	list, err := logger.ListArchivedChats("group", chatID)
+	if err != nil || len(list) != 1 || list[0].Index != 1 {
+		t.Fatalf("ListArchivedChats failed: %v, len=%d", err, len(list))
+	}
+
+	// 6. Restore Archived Chat
+	if err := logger.RestoreArchivedChat("group", chatID, 1); err != nil {
+		t.Fatalf("RestoreArchivedChat failed: %v", err)
+	}
+	restoredMsgs, _ := logger.GetRecentMessages("group", chatID, 0)
+	if len(restoredMsgs) != 2 {
+		t.Fatalf("expected 2 restored messages, got %d", len(restoredMsgs))
+	}
+}
+

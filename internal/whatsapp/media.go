@@ -97,13 +97,13 @@ func ExtractTextAndReply(msg *waE2E.Message) (text string, isReply bool, replied
 	return text, isReply, repliedID, repliedSender, repliedText
 }
 
-// ExtractDownloadableMedia finds any downloadable image or document in the direct or quoted message.
+// ExtractDownloadableMedia finds any downloadable image in the direct or quoted message.
 func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage, string) {
 	if msg == nil {
 		return nil, ""
 	}
 
-	// 1. Direct message media
+	// 1. Direct message image
 	if img := msg.GetImageMessage(); img != nil {
 		mime := img.GetMimetype()
 		if mime == "" {
@@ -112,15 +112,7 @@ func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage
 		return img, mime
 	}
 
-	if doc := msg.GetDocumentMessage(); doc != nil {
-		mime := doc.GetMimetype()
-		if mime == "" {
-			mime = "application/pdf"
-		}
-		return doc, mime
-	}
-
-	// 2. Quoted message media (when user replies to an earlier image or PDF)
+	// 2. Quoted message image (when user replies to an earlier image)
 	var ctxInfo *waE2E.ContextInfo
 	switch {
 	case msg.ExtendedTextMessage != nil:
@@ -141,13 +133,6 @@ func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage
 				mime = "image/jpeg"
 			}
 			return img, mime
-		}
-		if doc := quoted.GetDocumentMessage(); doc != nil {
-			mime := doc.GetMimetype()
-			if mime == "" {
-				mime = "application/pdf"
-			}
-			return doc, mime
 		}
 	}
 

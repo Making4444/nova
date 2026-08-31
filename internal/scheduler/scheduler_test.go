@@ -52,4 +52,14 @@ func TestSchedulerTaskLifecycle(t *testing.T) {
 	if engine.GetScheduledTasksCount() != 1 {
 		t.Errorf("expected 1 task after schedule, got %d", engine.GetScheduledTasksCount())
 	}
+
+	// Test Silence Tracker reset on incoming human message
+	engine.RecordIncomingMessageForRush("chat123", false)
+	engine.mu.Lock()
+	tracker, ok := engine.silenceTrackers["chat123"]
+	engine.mu.Unlock()
+	if !ok || tracker.Stage != 0 || tracker.LastHumanMessageTime.IsZero() {
+		t.Errorf("expected silence tracker to be initialized at stage 0")
+	}
 }
+

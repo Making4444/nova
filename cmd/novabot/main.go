@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 
@@ -21,7 +22,7 @@ import (
 
 const banner = `
 ===========================================================
-  🌟 Nova WhatsApp Bot (نوفا - بوت واتساب الذكي) 🌟
+  🌟 Nova WhatsApp Bot (نوفا - بوت واتساب الذكي Multi-Model) 🌟
 ===========================================================
 `
 
@@ -58,6 +59,35 @@ func (s *botStats) GetModelName() string {
 	return s.modelName
 }
 
+func performHealthCheck(cfg *config.Config) {
+	fmt.Println("🔍 --- تقرير الفحص والجاهزية عند الإقلاع (Startup Diagnostics) ---")
+
+	// 1. ffmpeg check
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		fmt.Println("  [✅ ffmpeg] مثبت وجاهز لمعالجة الصوت وتحويل OGG Opus.")
+	} else {
+		fmt.Println("  [⚠️ ffmpeg] غير موجود في PATH! (توليد الفويس نوت الصوتي قد لا يعمل إذا لم يكن ffmpeg مثبتاً).")
+	}
+
+	// 2. OpenRouter check
+	if cfg.OpenRouterAPIKey != "" {
+		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | الرؤية: %s)\n",
+			cfg.ModelChat, cfg.ModelMath, cfg.ModelVision)
+	} else {
+		fmt.Println("  [❌ OpenRouter] لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
+	}
+
+	// 3. Groq check
+	if cfg.GroqAPIKey != "" {
+		fmt.Printf("  [✅ Groq API] المفتاح متوفر (تفريغ الصوت: %s | الراوتر السريع: %s)\n",
+			cfg.ModelWhisper, cfg.ModelRouterGroq)
+	} else {
+		fmt.Println("  [⚠️ Groq API] لم يتم العثور على GROQ_API_KEY (تفريغ الفويس نوت سيكون معطلاً).")
+	}
+
+	fmt.Println("-------------------------------------------------------------------")
+}
+
 func main() {
 	fmt.Print(banner)
 
@@ -68,12 +98,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.OpenRouterAPIKey == "" {
-		fmt.Println("⚠️  تنبيه: لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
-		fmt.Println("    يرجى إضافة المفتاح في .env لتتمكن نوفا من توليد الردود الذكية.")
-	} else {
-		fmt.Printf("🤖 تم تحميل إعدادات الذكاء الاصطناعي بنجاح (النموذج: %s)\n", cfg.OpenRouterModel)
-	}
+	performHealthCheck(cfg)
 
 	// Set up logger
 	logger := waLog.Stdout("NovaBot", "INFO", true)
@@ -106,8 +131,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Initialize AI Client & Limiter
-	aiClient := ai.NewOpenRouterClient(cfg.OpenRouterAPIKey, cfg.OpenRouterModel, cfg.SystemPrompt)
+	// 3. Initialize Groq Fast Router & Multi-Model AI Client
+	groqRouter := ai.NewGroqRouter(cfg.GroqAPIKey, cfg.ModelRouterGroq)
+	aiClient := ai.NewMultiModelClient(
+		cfg.OpenRouterAPIKey,
+		cfg.ModelChat,
+		cfg.ModelMath,
+		cfg.ModelVision,
+		groqRouter,
+		cfg.SystemPrompt,
+	)
+	aiClient.SetMemoryUpdater(memStore)
+
 	limiter := trigger.NewChatLimiter(cfg.ChatCooldownSeconds)
 
 	// 4. Initialize WhatsApp Client
@@ -117,7 +152,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 5. Register Event Handler & Voice Engine
+	// 5. Register Event Handler, Groq STT & Voice Engine
 	eventHandler := whatsapp.NewEventHandler(
 		waClient,
 		aiClient,
@@ -129,10 +164,14 @@ func main() {
 		logger,
 	)
 
+	if cfg.GroqAPIKey != "" {
+		groqSTT := voice.NewGroqSTT(cfg.GroqAPIKey, cfg.ModelWhisper)
+		eventHandler.SetGroqSTT(groqSTT)
+	}
+
 	if cfg.OpenRouterAPIKey != "" {
 		ttsClient := voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
 		eventHandler.SetTTSClient(ttsClient)
-		fmt.Printf("🎙️  تم تفعيل المحرك الصوتي بنجاح (النموذج: %s | الصوت: %s)\n", cfg.TTSModel, cfg.TTSVoice)
 	}
 
 	// 6. Initialize Scheduler Engine & wire dependencies
@@ -148,7 +187,7 @@ func main() {
 	eventHandler.SetSchedulerEngine(schedulerEngine)
 
 	stats := &botStats{
-		modelName: cfg.OpenRouterModel,
+		modelName: fmt.Sprintf("%s (Chat) + %s (Math) + %s (Vision)", cfg.ModelChat, cfg.ModelMath, cfg.ModelVision),
 		scheduler: schedulerEngine,
 	}
 	eventHandler.SetStatsProvider(stats)
@@ -164,9 +203,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("\n🚀 بوت نوفا قيد التشغيل والاستماع للرسائل الآن...")
-	fmt.Println("💡 التريجر النشط: \"يا نوفا\" (في النص المباشر أو الـ Reply)")
-	fmt.Println("👑 أوامر الأدمن المتاحة: /shutdown, /start, /set <limit>, /auto <on|off>, /status")
+	fmt.Println("\n🚀 بوت نوفا قيد التشغيل والاستماع للرسائل الآن بنظام Multi-Model...")
+	fmt.Println("💡 التريجرات: \"يا نوفا\"، \"نوفا\"، أو منشن/تاج @nova أو برقم الحساب.")
+	fmt.Println("👑 أوامر الأدمن المتاحة: /shutdown, /start, /set <limit>, /auto <on|off>, /archive <new|list|load N>, /status")
 	fmt.Println("⏹️  اضغط Ctrl+C للإيقاف الآمن.")
 
 	// 8. Wait for interrupt signal for graceful shutdown
@@ -178,3 +217,4 @@ func main() {
 	waClient.Disconnect()
 	fmt.Println("👋 تم إيقاف البوت بنجاح. مع السلامة!")
 }
+

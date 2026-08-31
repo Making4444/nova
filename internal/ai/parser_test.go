@@ -87,3 +87,16 @@ func TestParseResponse_Invalid(t *testing.T) {
 		t.Errorf("expected error when should_reply is true but reply_text is empty")
 	}
 }
+
+func TestParseResponse_WithReactionEmoji(t *testing.T) {
+	raw := `{"should_reply": true, "reply_text": "ههههه عاش!", "reply_to_message_id": "M3", "memory_note": null, "mood": "joking", "reaction_emoji": "😂"}`
+	resp, err := ParseResponse(raw)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if resp.ReactionEmoji == nil || *resp.ReactionEmoji != "😂" {
+		t.Errorf("expected reaction emoji '😂', got %v", resp.ReactionEmoji)
+	}
+}
+
