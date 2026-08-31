@@ -36,6 +36,7 @@ type RequestPayload struct {
 	TriggerMatched       bool             `json:"trigger_matched"`
 	RecentContext        []ContextMessage `json:"recent_context"`
 	UserMemory           *string          `json:"user_memory"`
+	ChatSummary          *string          `json:"chat_summary,omitempty"`
 	CurrentTime          string           `json:"current_time"`
 	TimeOfDay            string           `json:"time_of_day"`
 	TimeSinceLastMessage string           `json:"time_since_last_message"`
@@ -192,6 +193,14 @@ func BuildContext(
 		}
 	}
 
+	// Fetch latest chat summary if archived previously
+	var chatSummaryPtr *string
+	if chatLogger != nil {
+		if sum, err := chatLogger.GetLatestSummary(chatType, chatID); err == nil && sum != "" {
+			chatSummaryPtr = &sum
+		}
+	}
+
 	var chatNamePtr *string
 	if chatName != "" {
 		chatNamePtr = &chatName
@@ -210,6 +219,7 @@ func BuildContext(
 		TriggerMatched:       true,
 		RecentContext:        recentContext,
 		UserMemory:           userMemPtr,
+		ChatSummary:          chatSummaryPtr,
 		CurrentTime:          currTimeStr,
 		TimeOfDay:            timeOfDay,
 		TimeSinceLastMessage: timeSinceLast,

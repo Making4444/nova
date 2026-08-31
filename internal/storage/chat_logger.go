@@ -254,6 +254,48 @@ func (l *ChatLogger) SaveSummary(chatType, chatID string, archiveIndex int, summ
 	return os.WriteFile(summaryPath, []byte(header+summaryContent), 0644)
 }
 
+// GetLatestSummary reads the most recent summary for a chat if one exists.
+func (l *ChatLogger) GetLatestSummary(chatType, chatID string) (string, error) {
+	folder := l.getFolder(chatType, chatID)
+	safeName := sanitizeID(chatID)
+	summaryDir := filepath.Join(l.baseDir, folder, "summaries")
+
+	if _, err := os.Stat(summaryDir); os.IsNotExist(err) {
+		return "", nil
+	}
+
+	files, err := os.ReadDir(summaryDir)
+	if err != nil || len(files) == 0 {
+		return "", nil
+	}
+
+	var latestFile string
+	var maxIdx int = -1
+
+	for _, f := range files {
+		if f.IsDir() || !strings.HasPrefix(f.Name(), safeName+"_summary_") || !strings.HasSuffix(f.Name(), ".md") {
+			continue
+		}
+		var idx int
+		idxStr := strings.TrimSuffix(strings.TrimPrefix(f.Name(), safeName+"_summary_"), ".md")
+		if _, err := fmt.Sscanf(idxStr, "%d", &idx); err == nil && idx > maxIdx {
+			maxIdx = idx
+			latestFile = f.Name()
+		}
+	}
+
+	if latestFile == "" {
+		return "", nil
+	}
+
+	content, err := os.ReadFile(filepath.Join(summaryDir, latestFile))
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(content)), nil
+}
+
 // RestoreArchivedChat restores an archived chat file by index back into the active log.
 func (l *ChatLogger) RestoreArchivedChat(chatType, chatID string, archiveIndex int) error {
 	folder := l.getFolder(chatType, chatID)
