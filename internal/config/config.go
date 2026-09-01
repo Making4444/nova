@@ -44,18 +44,18 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = strings.TrimSpace(os.Getenv("OPENROUTER_MODEL"))
 		if modelChat == "" {
-			modelChat = "google/gemma-4-31b"
+			modelChat = "google/gemma-4-31b-it"
 		}
 	}
 
 	modelMath := os.Getenv("MODEL_MATH")
 	if modelMath == "" {
-		modelMath = "nvidia/nemotron-3-super"
+		modelMath = "nvidia/nemotron-3-super-120b-a12b"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
-		modelVision = "google/gemma-4-31b"
+		modelVision = "google/gemma-4-31b-it"
 	}
 
 	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")

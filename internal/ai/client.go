@@ -572,7 +572,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
 				targetMathModel := c.modelMath
 				if targetMathModel == "" {
-					targetMathModel = "nvidia/nemotron-3-super"
+					targetMathModel = "nvidia/nemotron-3-super-120b-a12b"
 				}
 				fmt.Printf("\n[🧮 Math Consultant] Consulting %s on problem: %q\n", targetMathModel, args.Problem)
 

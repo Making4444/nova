@@ -141,10 +141,10 @@ type SwarmConfig struct {
 func DefaultSwarmConfig() *SwarmConfig {
 	return &SwarmConfig{
 		ModelResearch:           "qwen/qwen3-30b-a3b-2507",        // Super fast & economical research ($0.048 / $0.193 per 1M)
-		ModelMathCoding:         "nvidia/nemotron-3-super",         // Top tier AIME 2025 & SWE-Bench reasoning ($0.085 / $0.40 per 1M)
-		ModelVisionDoc:          "google/gemma-4-31b",              // Vision, documents & OCR reasoning ($0.09 / $0.34 per 1M)
-		ModelPersona:            "google/gemma-4-31b",              // Google Gemma 4 31B: High IQ, natural dialect ($0.09 / $0.34 per 1M)
-		ModelSynthesizer:        "google/gemma-4-31b",              // Authentic Egyptian compiler ($0.09 / $0.34 per 1M)
+		ModelMathCoding:         "nvidia/nemotron-3-super-120b-a12b", // Top tier AIME 2025 & SWE-Bench reasoning ($0.085 / $0.40 per 1M)
+		ModelVisionDoc:          "google/gemma-4-31b-it",           // Vision, documents & OCR reasoning ($0.09 / $0.34 per 1M)
+		ModelPersona:            "google/gemma-4-31b-it",           // Google Gemma 4 31B IT: High IQ, natural dialect ($0.09 / $0.34 per 1M)
+		ModelSynthesizer:        "google/gemma-4-31b-it",           // Authentic Egyptian compiler ($0.09 / $0.34 per 1M)
 		ModelRouter:             "qwen/qwen3.8-27b",                // Fast Groq & hybrid router
 		EnableEgyptianSynthesis: true,
 		MaxToolSteps:            4,
