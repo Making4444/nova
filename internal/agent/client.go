@@ -40,9 +40,10 @@ func (c *OpenRouterLLMClient) SetBaseURL(url string) {
 }
 
 type openRouterRequestBody struct {
-	Model    string                 `json:"model"`
-	Messages []LLMMessage           `json:"messages"`
-	Tools    []tools.ToolDefinition `json:"tools,omitempty"`
+	Model     string                 `json:"model"`
+	Messages  []LLMMessage           `json:"messages"`
+	Tools     []tools.ToolDefinition `json:"tools,omitempty"`
+	MaxTokens int                    `json:"max_tokens,omitempty"`
 }
 
 type openRouterResponseBody struct {
@@ -69,9 +70,10 @@ func (c *OpenRouterLLMClient) Call(
 	toolDefs []tools.ToolDefinition,
 ) (*LLMResult, error) {
 	reqBody := openRouterRequestBody{
-		Model:    model,
-		Messages: messages,
-		Tools:    toolDefs,
+		Model:     model,
+		Messages:  messages,
+		Tools:     toolDefs,
+		MaxTokens: 2000,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

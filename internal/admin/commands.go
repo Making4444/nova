@@ -256,7 +256,7 @@ func HandleAdminCommand(
 		}
 
 		// Default: Archive Current Chat and start fresh
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 		defer cancel()
 
 		summaryPath, archiveIdx, err := archiver.ArchiveChatSession(ctx, chatType, chatID)

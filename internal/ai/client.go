@@ -237,9 +237,10 @@ var updateUserMemoryTool = toolDefinition{
 }
 
 type openRouterRequest struct {
-	Model    string              `json:"model"`
-	Messages []openRouterMessage `json:"messages"`
-	Tools    []toolDefinition    `json:"tools,omitempty"`
+	Model     string              `json:"model"`
+	Messages  []openRouterMessage `json:"messages"`
+	Tools     []toolDefinition    `json:"tools,omitempty"`
+	MaxTokens int                 `json:"max_tokens,omitempty"`
 }
 
 type openRouterChoice struct {
@@ -524,10 +525,18 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 }
 
 func (c *OpenRouterClient) callAPI(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition) (openRouterMessage, error) {
+	return c.callAPICustom(ctx, model, messages, tools, 2000)
+}
+
+func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition, maxTokens int) (openRouterMessage, error) {
+	if maxTokens <= 0 {
+		maxTokens = 2000
+	}
 	reqBody := openRouterRequest{
-		Model:    model,
-		Messages: messages,
-		Tools:    tools,
+		Model:     model,
+		Messages:  messages,
+		Tools:     tools,
+		MaxTokens: maxTokens,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -585,6 +594,13 @@ func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesTex
 		return "", nil, errors.New("OPENROUTER_API_KEY is not set")
 	}
 
+	// Optimize very large transcripts to prevent timeout while keeping full historical context
+	if len(messagesText) > 250000 {
+		head := messagesText[:60000]
+		tail := messagesText[len(messagesText)-140000:]
+		messagesText = head + "\n\n[... تم اقتطاع جزء من منتصف المحادثة للحفاظ على سرعة المعالجة ...]\n\n" + tail
+	}
+
 	systemPrompt := `أنت محلل محادثات ذكي ومساعد لبوت نوفا. مهمتك تحليل سجل المحادثة الكامل وتحويله إلى:
 1. "summary": ملخص شامل وممتع للمحادثة بصيغة Markdown، يبرز أهم المواضيع، النكات، الأحداث، والقرارات المتخذة.
 2. "users": قاموس يحتوي على بطاقة تعريفية لكل مستخدم شارك في الشات (المفتاح هو user_id أو اسمه، والقيمة هي ملخص شخصيته واهتماماته ومعلومات عنه).
@@ -604,17 +620,17 @@ func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesTex
 
 	summarizerModel := c.modelSummarizer
 	if summarizerModel == "" {
-		summarizerModel = "google/gemini-3.7-flash"
+		summarizerModel = "google/gemini-2.5-flash"
 	}
 
-	fmt.Printf("\n[📋 Summarizer] Sending full chat transcript (%d chars) to long-context model: %s\n", len(messagesText), summarizerModel)
-	choiceMsg, err := c.callAPI(ctx, summarizerModel, reqMessages, nil)
+	fmt.Printf("\n[📋 Summarizer] Sending chat transcript (%d chars) to long-context model: %s\n", len(messagesText), summarizerModel)
+	choiceMsg, err := c.callAPICustom(ctx, summarizerModel, reqMessages, nil, 4000)
 	if err != nil {
 		fmt.Printf("[⚠️ Summarizer Warning] %s failed (%v). Retrying with fallback google/gemini-2.5-flash...\n", summarizerModel, err)
-		choiceMsg, err = c.callAPI(ctx, "google/gemini-2.5-flash", reqMessages, nil)
+		choiceMsg, err = c.callAPICustom(ctx, "google/gemini-2.5-flash", reqMessages, nil, 4000)
 		if err != nil {
 			fmt.Printf("[⚠️ Summarizer Warning] google/gemini-2.5-flash failed (%v). Retrying with google/gemini-2.0-flash-001...\n", err)
-			choiceMsg, err = c.callAPI(ctx, "google/gemini-2.0-flash-001", reqMessages, nil)
+			choiceMsg, err = c.callAPICustom(ctx, "google/gemini-2.0-flash-001", reqMessages, nil, 4000)
 			if err != nil {
 				return "", nil, fmt.Errorf("failed to summarize chat transcript with AI models: %w", err)
 			}
