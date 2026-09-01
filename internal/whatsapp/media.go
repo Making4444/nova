@@ -169,11 +169,31 @@ func DownloadMediaAsBase64(ctx context.Context, cli *whatsmeow.Client, msg *waE2
 	return &dataURL, nil
 }
 
+// EnsureRTLFormatting ensures that messages containing Arabic text render correctly in WhatsApp
+// without getting scrambled by English prefixes, numbers, or symbols.
+func EnsureRTLFormatting(text string) string {
+	hasArabic := false
+	for _, r := range text {
+		if (r >= 0x0600 && r <= 0x06FF) || (r >= 0x0750 && r <= 0x077F) || (r >= 0x08A0 && r <= 0x08FF) {
+			hasArabic = true
+			break
+		}
+	}
+	if !hasArabic {
+		return text
+	}
+	if strings.HasPrefix(text, "\u200F") {
+		return text
+	}
+	return "\u200F" + text
+}
+
 // BuildReplyMessage creates a message proto quoting a target message ID and participant.
 func BuildReplyMessage(text string, replyToID string, replyToSender string) *waE2E.Message {
+	formattedText := EnsureRTLFormatting(text)
 	msg := &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: proto.String(text),
+			Text: proto.String(formattedText),
 		},
 	}
 

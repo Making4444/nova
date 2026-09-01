@@ -88,7 +88,7 @@ func TestExtractTextAndReply(t *testing.T) {
 
 func TestBuildReplyMessage(t *testing.T) {
 	reply := BuildReplyMessage("رد نوفا", "MSG123", "user@s.whatsapp.net")
-	if reply.GetExtendedTextMessage().GetText() != "رد نوفا" {
+	if reply.GetExtendedTextMessage().GetText() != "\u200Fرد نوفا" {
 		t.Errorf("unexpected reply text: %q", reply.GetExtendedTextMessage().GetText())
 	}
 	if reply.GetExtendedTextMessage().GetContextInfo().GetStanzaID() != "MSG123" {
