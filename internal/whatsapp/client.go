@@ -102,17 +102,6 @@ func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText str
 	return resp.ID, nil
 }
 
-// SendReaction sends an emoji reaction to a specific message using whatsmeow's official BuildReaction.
-func (c *Client) SendReaction(ctx context.Context, chatJID types.JID, senderJID types.JID, targetMessageID string, emoji string) error {
-	if c.WAClient == nil || targetMessageID == "" || emoji == "" {
-		return nil
-	}
-
-	reactionMsg := c.WAClient.BuildReaction(chatJID, senderJID, types.MessageID(targetMessageID), emoji)
-	_, err := c.WAClient.SendMessage(ctx, chatJID, reactionMsg)
-	return err
-}
-
 // GetUserJID returns the bot's own JID.
 func (c *Client) GetUserJID() types.JID {
 	if c.WAClient != nil && c.WAClient.Store != nil && c.WAClient.Store.ID != nil {
@@ -125,4 +114,3 @@ func (c *Client) GetUserJID() types.JID {
 func (c *Client) IsConnected() bool {
 	return c.WAClient != nil && c.WAClient.IsConnected()
 }
-

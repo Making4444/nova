@@ -26,6 +26,8 @@ type Config struct {
 	ContextHistoryLimit int
 	TTSModel            string
 	TTSVoice            string
+	DashboardPort       int
+	DashboardPassword   string
 }
 
 // LoadConfig loads environment variables and reads the system prompt once on startup.
@@ -40,23 +42,23 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = os.Getenv("OPENROUTER_MODEL")
 		if modelChat == "" {
-			modelChat = "qwen/qwen3-235b-a22b-2507"
+			modelChat = "google/gemini-2.5-flash"
 		}
 	}
 
 	modelMath := os.Getenv("MODEL_MATH")
 	if modelMath == "" {
-		modelMath = "z-ai/glm-5.2"
+		modelMath = "deepseek/deepseek-r1-distill-llama-70b"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
-		modelVision = "openai/gpt-5.6-luna"
+		modelVision = "google/gemini-2.5-flash"
 	}
 
 	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")
 	if modelSummarizer == "" {
-		modelSummarizer = "google/gemini-3.7-flash"
+		modelSummarizer = "google/gemini-2.5-flash"
 	}
 
 	modelWhisper := os.Getenv("MODEL_WHISPER")
@@ -112,6 +114,18 @@ func LoadConfig() (*Config, error) {
 		ttsVoice = "onyx" // Male voice for Nova (onyx / echo / alloy)
 	}
 
+	dashboardPort := 8080
+	if dpStr := os.Getenv("DASHBOARD_PORT"); dpStr != "" {
+		if v, err := strconv.Atoi(dpStr); err == nil && v > 0 {
+			dashboardPort = v
+		}
+	}
+
+	dashboardPassword := os.Getenv("DASHBOARD_PASSWORD")
+	if dashboardPassword == "" {
+		dashboardPassword = "nova_admin_2026"
+	}
+
 	return &Config{
 		OpenRouterAPIKey:    apiKey,
 		ModelChat:           modelChat,
@@ -128,5 +142,7 @@ func LoadConfig() (*Config, error) {
 		ContextHistoryLimit: historyLimit,
 		TTSModel:            ttsModel,
 		TTSVoice:            ttsVoice,
+		DashboardPort:       dashboardPort,
+		DashboardPassword:   dashboardPassword,
 	}, nil
 }

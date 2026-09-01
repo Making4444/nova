@@ -7,14 +7,19 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	waLog "go.mau.fi/whatsmeow/util/log"
 
 	"novabot/internal/admin"
 	"novabot/internal/ai"
 	"novabot/internal/config"
+	"novabot/internal/dashboard"
+	"novabot/internal/emotion"
+	"novabot/internal/memory"
 	"novabot/internal/scheduler"
 	"novabot/internal/storage"
+	"novabot/internal/tools"
 	"novabot/internal/trigger"
 	"novabot/internal/voice"
 	"novabot/internal/whatsapp"
@@ -22,7 +27,7 @@ import (
 
 const banner = `
 ===========================================================
-  🌟 Nova WhatsApp Bot (نوفا - بوت واتساب الذكي Multi-Model) 🌟
+  🌟 Nova WhatsApp Bot (نوفا 4.0 - Autonomous Agent OS) 🌟
 ===========================================================
 `
 
@@ -60,13 +65,13 @@ func (s *botStats) GetModelName() string {
 }
 
 func performHealthCheck(cfg *config.Config) {
-	fmt.Println("🔍 --- تقرير الفحص والجاهزية عند الإقلاع (Startup Diagnostics) ---")
+	fmt.Println("\n🔍 فحص جاهزية بيئة التشغيل والمفاتيح (Health Check):")
 
-	// 1. ffmpeg check
-	if _, err := exec.LookPath("ffmpeg"); err == nil {
-		fmt.Println("  [✅ ffmpeg] مثبت وجاهز لمعالجة الصوت وتحويل OGG Opus.")
+	// 1. Groq check
+	if cfg.GroqAPIKey != "" {
+		fmt.Printf("  [✅ Groq] المفتاح متوفر (الموجه: %s | التفريغ: %s)\n", cfg.ModelRouterGroq, cfg.ModelWhisper)
 	} else {
-		fmt.Println("  [⚠️ ffmpeg] غير موجود في PATH! (توليد الفويس نوت الصوتي قد لا يعمل إذا لم يكن ffmpeg مثبتاً).")
+		fmt.Println("  [⚠️ Groq] لم يتم العثور على GROQ_API_KEY (سيتم استخدام التوجيه المحلي)")
 	}
 
 	// 2. OpenRouter check
@@ -77,15 +82,14 @@ func performHealthCheck(cfg *config.Config) {
 		fmt.Println("  [❌ OpenRouter] لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
 	}
 
-	// 3. Groq check
-	if cfg.GroqAPIKey != "" {
-		fmt.Printf("  [✅ Groq API] المفتاح متوفر (تفريغ الصوت: %s | الراوتر السريع: %s)\n",
-			cfg.ModelWhisper, cfg.ModelRouterGroq)
+	// 3. FFmpeg check
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		fmt.Println("  [✅ FFmpeg] متوفر ومثبت (دعم الفويس نوت OGG Opus جاهز)")
 	} else {
-		fmt.Println("  [⚠️ Groq API] لم يتم العثور على GROQ_API_KEY (تفريغ الفويس نوت سيكون معطلاً).")
+		fmt.Println("  [⚠️ FFmpeg] غير مثبت! لتفعيل الفويس نوت قم بتثبيته: sudo apt install ffmpeg")
 	}
 
-	fmt.Println("-------------------------------------------------------------------")
+	fmt.Println()
 }
 
 func main() {
@@ -106,7 +110,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 2. Initialize storage components and Admin State
+	// 2. Initialize storage components, Admin State, Emotion Engine, Vector Memory, Tools
 	chatLogger, err := storage.NewChatLogger("data/chats")
 	if err != nil {
 		logger.Errorf("Failed to initialize chat logger: %v", err)
@@ -124,6 +128,20 @@ func main() {
 		logger.Errorf("Failed to initialize admin state: %v", err)
 		os.Exit(1)
 	}
+
+	emotionEngine, err := emotion.NewEngine("data/emotions")
+	if err != nil {
+		logger.Errorf("Failed to initialize emotion engine: %v", err)
+		os.Exit(1)
+	}
+
+	memoryEngine, err := memory.NewTriTierEngine("data/memory", nil, nil)
+	if err != nil {
+		logger.Errorf("Failed to initialize memory engine: %v", err)
+		os.Exit(1)
+	}
+
+	toolRegistry := tools.NewDefaultRegistry(cfg.OpenRouterAPIKey)
 
 	sessionContainer, err := storage.InitSessionStore(ctx, cfg.SessionDBPath, logger)
 	if err != nil {
@@ -165,6 +183,10 @@ func main() {
 		logger,
 	)
 
+	eventHandler.SetEmotionEngine(emotionEngine)
+	eventHandler.SetMemoryEngine(memoryEngine)
+	eventHandler.SetToolRegistry(toolRegistry)
+
 	if cfg.GroqAPIKey != "" {
 		groqSTT := voice.NewGroqSTT(cfg.GroqAPIKey, cfg.ModelWhisper)
 		eventHandler.SetGroqSTT(groqSTT)
@@ -196,6 +218,32 @@ func main() {
 	schedulerEngine.Start()
 	defer schedulerEngine.Stop()
 
+	// 7. Start Live Web Admin Dashboard
+	dashPortStr := fmt.Sprintf(":%d", cfg.DashboardPort)
+	dashServer := dashboard.NewServer(dashboard.ServerConfig{
+		Port:        dashPortStr,
+		Password:    cfg.DashboardPassword,
+		DataDir:     "data",
+		AdminState:  adminState,
+		ChatLogger:  chatLogger,
+		MemoryStore: memStore,
+		Models: map[string]string{
+			"chat":       cfg.ModelChat,
+			"math":       cfg.ModelMath,
+			"vision":     cfg.ModelVision,
+			"summarizer": cfg.ModelSummarizer,
+			"whisper":    cfg.ModelWhisper,
+			"router":     cfg.ModelRouterGroq,
+		},
+	})
+
+	go func() {
+		if err := dashServer.Start(); err != nil && err.Error() != "http: Server closed" {
+			logger.Warnf("Dashboard server error: %v", err)
+		}
+	}()
+	fmt.Printf("🌐 لوحة التحكم (Live Web Admin Dashboard): http://localhost%s\n", dashPortStr)
+
 	waClient.AddEventHandler(eventHandler.HandleEvent)
 
 	// 7. Connect to WhatsApp (Generates QR if not authenticated)
@@ -215,6 +263,11 @@ func main() {
 	<-sigChan
 
 	fmt.Println("\n🛑 جاري إيقاف نوفا وفصل الاتصال بأمان...")
+	if dashServer != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = dashServer.Stop(stopCtx)
+		stopCancel()
+	}
 	waClient.Disconnect()
 	fmt.Println("👋 تم إيقاف البوت بنجاح. مع السلامة!")
 }

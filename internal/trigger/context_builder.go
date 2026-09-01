@@ -37,6 +37,8 @@ type RequestPayload struct {
 	RecentContext        []ContextMessage `json:"recent_context"`
 	UserMemory           *string          `json:"user_memory"`
 	ChatSummary          *string          `json:"chat_summary,omitempty"`
+	EmotionContext       *string          `json:"emotion_context,omitempty"`
+	VectorMemories       *string          `json:"vector_memories,omitempty"`
 	CurrentTime          string           `json:"current_time"`
 	TimeOfDay            string           `json:"time_of_day"`
 	TimeSinceLastMessage string           `json:"time_since_last_message"`

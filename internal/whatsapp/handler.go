@@ -13,7 +13,10 @@ import (
 
 	"novabot/internal/admin"
 	"novabot/internal/ai"
+	"novabot/internal/emotion"
+	"novabot/internal/memory"
 	"novabot/internal/storage"
+	"novabot/internal/tools"
 	"novabot/internal/trigger"
 	"novabot/internal/voice"
 )
@@ -30,6 +33,9 @@ type EventHandler struct {
 	aiClient        *ai.OpenRouterClient
 	ttsClient       *voice.OpenRouterTTS
 	groqSTT         *voice.GroqSTT
+	emotionEngine   *emotion.Engine
+	memoryEngine    *memory.TriTierEngine
+	toolRegistry    *tools.Registry
 	chatLogger      *storage.ChatLogger
 	memStore        *storage.MemoryStore
 	adminState      *admin.State
@@ -74,6 +80,21 @@ func (h *EventHandler) SetTTSClient(tts *voice.OpenRouterTTS) {
 // SetGroqSTT attaches the Groq Whisper speech-to-text engine.
 func (h *EventHandler) SetGroqSTT(stt *voice.GroqSTT) {
 	h.groqSTT = stt
+}
+
+// SetEmotionEngine attaches the human emotion simulation engine.
+func (h *EventHandler) SetEmotionEngine(eng *emotion.Engine) {
+	h.emotionEngine = eng
+}
+
+// SetMemoryEngine attaches the Tri-Tier Vector & Semantic memory engine.
+func (h *EventHandler) SetMemoryEngine(eng *memory.TriTierEngine) {
+	h.memoryEngine = eng
+}
+
+// SetToolRegistry attaches the Agentic Tools registry.
+func (h *EventHandler) SetToolRegistry(reg *tools.Registry) {
+	h.toolRegistry = reg
 }
 
 // SetSchedulerEngine attaches the scheduler engine.
@@ -384,6 +405,21 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
 	defer cancel()
 
+	// Inject Emotion Engine State and Mood
+	isMaker := (h.adminState != nil && h.adminState.IsAdmin(senderID, senderName, evt.Info.IsFromMe))
+	if h.emotionEngine != nil {
+		h.emotionEngine.UpdateMood(chatID, senderID, senderName, cleanText, isMaker, "")
+		emotionCtx := h.emotionEngine.BuildPromptContext(chatID, senderID, senderName, isMaker)
+		payload.EmotionContext = &emotionCtx
+	}
+
+	// Inject Tri-Tier Comprehensive Memory Context
+	if h.memoryEngine != nil {
+		if vectorCtx, err := h.memoryEngine.GetComprehensiveContext(ctx, chatID, senderID, cleanText); err == nil && vectorCtx != "" {
+			payload.VectorMemories = &vectorCtx
+		}
+	}
+
 	h.logger.Infof("Trigger matched in chat %s by %s, generating AI response...", chatID, senderName)
 	aiResp, err := h.aiClient.GenerateResponse(ctx, payload)
 	if err != nil {
@@ -406,22 +442,6 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	targetMsgID := messageID
 	if aiResp.ReplyToMessageID != nil && *aiResp.ReplyToMessageID != "" {
 		targetMsgID = *aiResp.ReplyToMessageID
-	}
-
-	// 9.5 Send Optional Emoji Reaction if the AI decided to react!
-	if aiResp.ReactionEmoji != nil && *aiResp.ReactionEmoji != "" {
-		emoji := strings.TrimSpace(*aiResp.ReactionEmoji)
-		if emoji != "" {
-			reactCtx, reactCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			reactErr := h.waClient.SendReaction(reactCtx, evt.Info.Chat, evt.Info.Sender, targetMsgID, emoji)
-			reactCancel()
-			if reactErr != nil {
-				h.logger.Errorf("Failed to send WhatsApp reaction %s to message %s: %v", emoji, targetMsgID, reactErr)
-				fmt.Printf("[❌ WhatsApp Reaction Error] Failed to send emoji %s: %v\n", emoji, reactErr)
-			} else {
-				fmt.Printf("[✨ WhatsApp Reaction] Nova reacted with emoji %s to message %s\n", emoji, targetMsgID)
-			}
-		}
 	}
 
 	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
@@ -471,10 +491,15 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// Save memory note if returned by AI
 	if aiResp.MemoryNote != nil && strings.TrimSpace(*aiResp.MemoryNote) != "" {
-		if err := h.memStore.AppendMemoryNote(senderID, senderName, *aiResp.MemoryNote); err != nil {
+		note := strings.TrimSpace(*aiResp.MemoryNote)
+		if err := h.memStore.AppendMemoryNote(senderID, senderName, note); err != nil {
 			h.logger.Errorf("Failed to save memory note for user %s: %v", senderID, err)
 		} else {
 			h.logger.Infof("Saved new memory note for user %s (%s)", senderName, senderID)
+		}
+
+		if h.memoryEngine != nil {
+			_ = h.memoryEngine.SaveMemory(chatID, senderID, senderName, note, nil)
 		}
 	}
 }

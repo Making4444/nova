@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🌟 Nova WhatsApp Bot — Live Web Admin Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-gradient: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+                         radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 40%),
+                         radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 60%),
+                         #07090e;
+      --glass-bg: rgba(17, 24, 39, 0.72);
+      --glass-card: rgba(22, 31, 52, 0.65);
+      --glass-card-hover: rgba(30, 43, 73, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-border-focus: rgba(99, 102, 241, 0.4);
+      --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+      
+      --accent-indigo: #6366f1;
+      --accent-pink: #ec4899;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --font-cairo: 'Cairo', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-cairo);
+    }
+
+    body {
+      background: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent-indigo); }
+
+    /* Glass Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(10, 15, 28, 0.85);
+      border-bottom: 1px solid var(--glass-border);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .bot-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-pink));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+      animation: pulse-glow 3s infinite alternate;
+    }
+
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 10px rgba(99, 102, 241, 0.4); }
+      100% { box-shadow: 0 0 25px rgba(236, 72, 153, 0.6); }
+    }
+
+    .brand-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, #ffffff, #c7d2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .status-pill.shutdown {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: rgba(244, 63, 94, 0.3);
+      color: #fb7185;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: blink 2s infinite;
+    }
+
+    .status-pill.shutdown .status-dot {
+      background: #f43f5e;
+      box-shadow: 0 0 8px #f43f5e;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .header-info-item {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--glass-border);
+    }
+
+    .header-info-item strong {
+      color: var(--text-main);
+    }
+
+    /* Action Buttons */
+    .btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--glass-border);
+      color: var(--text-main);
+      padding: 0.5rem 1rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.25s ease;
+      backdrop-filter: blur(8px);
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-indigo), #4f46e5);
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3));
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+
+    .btn-danger:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.35), rgba(185, 28, 28, 0.5));
+      border-color: #ef4444;
+      color: #fff;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.3));
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+
+    .btn-success:hover {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(5, 150, 105, 0.5));
+      color: #fff;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1440px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Navigation Tabs */
+    .tabs-nav {
+      display: flex;
+      gap: 0.5rem;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 0.35rem;
+      border-radius: 14px;
+      border: 1px solid var(--glass-border);
+      margin-bottom: 2rem;
+      backdrop-filter: blur(12px);
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.65rem 1.25rem;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.25s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(236, 72, 153, 0.15));
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+    }
+
+    /* Tab Panes */
+    .tab-pane {
+      display: none;
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--glass-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 1.25rem;
+      box-shadow: var(--glass-shadow);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .stat-card:hover {
+      transform: translateY(-3px);
+      background: var(--glass-card-hover);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--card-accent, var(--accent-indigo)), transparent);
+    }
+
+    .stat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+
+    .stat-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .stat-icon {
+      font-size: 1.35rem;
+      padding: 0.4rem;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-value {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--text-main);
+      letter-spacing: -0.5px;
+    }
+
+    .stat-footer {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    /* Charts Section */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 1024px) {
+      .charts-grid { grid-template-columns: 1fr; }
+    }
+
+    .glass-box {
+      background: var(--glass-card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      padding: 1.5rem;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .box-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 260px;
+      width: 100%;
+    }
+
+    /* Models Status Section */
+    .models-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .model-card {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .model-icon {
+      font-size: 1.5rem;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .model-info h4 {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 0.2rem;
+    }
+
+    .model-info p {
+      font-size: 0.9rem;
+      font-family: var(--font-mono);
+      color: #a5b4fc;
+      word-break: break-all;
+    }
+
+    /* Chats Explorer Layout */
+    .chats-layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.5rem;
+      height: 680px;
+    }
+
+    @media (max-width: 900px) {
+      .chats-layout { grid-template-columns: 1fr; height: auto; }
+    }
+
+    .chats-list-pane {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(10, 15, 28, 0.8);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      outline: none;
+      transition: all 0.25s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-indigo);
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+    }
+
+    .chat-item {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .chat-item:hover, .chat-item.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+
+    .chat-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.35rem;
+    }
+
+    .chat-item-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-main);
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chat-badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .chat-badge.group {
+      background: rgba(236, 72, 153, 0.2);
+      color: #f472b6;
+      border-color: rgba(236, 72, 153, 0.3);
+    }
+
+    .chat-item-snippet {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Messages Viewer Pane */
+    .chat-viewer-pane {
+      display: flex;
+      flex-direction: column;
+      background: rgba(10, 15, 28, 0.6);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .chat-viewer-header {
+      padding: 1rem 1.25rem;
+      background: rgba(15, 23, 42, 0.8);
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .messages-scroll-area {
+      flex: 1;
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .msg-bubble {
+      max-width: 75%;
+      padding: 0.75rem 1rem;
+      border-radius: 14px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      position: relative;
+    }
+
+    .msg-bubble.user {
+      align-self: flex-start;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg-bubble.nova {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(79, 70, 229, 0.35), rgba(124, 58, 237, 0.35));
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #e0e7ff;
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg-meta {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-top: 0.35rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    /* Emotions & Affinities Grid */
+    .emotions-overview {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .emotions-overview { grid-template-columns: 1fr; }
+    }
+
+    .mood-meter-card {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mood-badge-large {
+      font-size: 3rem;
+      margin-bottom: 0.75rem;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .affinities-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .affinity-card {
+      background: var(--glass-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      transition: all 0.25s ease;
+    }
+
+    .affinity-card:hover {
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .affinity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .affinity-badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      background: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Live Logs Console */
+    .console-box {
+      background: #030712;
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 600px;
+    }
+
+    .console-header {
+      background: #0b0f19;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .console-title {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .console-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .console-stream {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .log-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      word-break: break-all;
+    }
+
+    .log-time { color: #64748b; min-width: 140px; font-size: 0.75rem; }
+    .log-level { font-weight: 700; min-width: 55px; border-radius: 4px; padding: 0.05rem 0.3rem; font-size: 0.7rem; text-align: center; }
+    .log-level.INFO { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .log-level.WARN { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .log-level.ERROR { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .log-level.SUCCESS { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .log-msg { color: #cbd5e1; }
+
+    /* Settings Form */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+      font-weight: 600;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 52px;
+      height: 28px;
+    }
+
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #334155;
+      transition: .3s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--accent-indigo); }
+    input:checked + .slider:before { transform: translateX(24px); }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-backdrop.open { display: flex; }
+
+    .modal-box {
+      background: #0f172a;
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--glass-shadow);
+    }
+
+    .modal-header {
+      padding: 1.25rem;
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-body {
+      padding: 1.25rem;
+      overflow-y: auto;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      font-family: var(--font-cairo);
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 2rem;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      color: #fff;
+      padding: 0.75rem 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 300;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+      font-size: 0.9rem;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand-section">
+      <div class="bot-avatar">✨</div>
+      <div>
+        <h1 class="brand-title">لوحة تحكم نوفا (Nova Admin Dashboard)</h1>
+        <p class="brand-subtitle">نظام المراقبة الحية والذكاء الاصطناعي المتعدد (Multi-Model AI)</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div id="status-pill" class="status-pill">
+        <span class="status-dot"></span>
+        <span id="status-text">جاري الفحص...</span>
+      </div>
+
+      <div class="header-info-item">
+        <span>⏰</span>
+        <span id="cairo-clock">--:--:--</span>
+      </div>
+
+      <div class="header-info-item">
+        <span>⏳ التشغيل:</span>
+        <strong id="uptime-val">--</strong>
+      </div>
+
+      <button id="btn-toggle-shutdown" class="btn btn-danger" onclick="toggleShutdown()">
+        <span>🛑</span>
+        <span>إغلاق مؤقت</span>
+      </button>
+
+      <button class="btn btn-primary" onclick="refreshAll(true)">
+        <span>🔄</span>
+        <span>تحديث</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('overview')">
+        <span>📊</span>
+        <span>نظرة عامة والتحليلات</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('chats')">
+        <span>💬</span>
+        <span>استكشاف المحادثات والسجلات</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('emotions')">
+        <span>🧠</span>
+        <span>المشاعر وذاكرة المستخدمين</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('settings')">
+        <span>⚙️</span>
+        <span>إعدادات البوت والتحكم</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('logs')">
+        <span>📜</span>
+        <span>سجل العمليات المباشر (Console)</span>
+      </button>
+    </nav>
+
+    <!-- 1. Overview Tab -->
+    <section id="pane-overview" class="tab-pane active">
+      <!-- Quick Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card" style="--card-accent: var(--accent-indigo);">
+          <div class="stat-header">
+            <span class="stat-title">إجمالي المحادثات النشطة</span>
+            <span class="stat-icon">💬</span>
+          </div>
+          <div class="stat-value" id="stat-total-chats">0</div>
+          <div class="stat-footer">
+            <span id="stat-chats-breakdown">0 جروبات | 0 خاص</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="--card-accent: var(--accent-cyan);">
+          <div class="stat-header">
+            <span class="stat-title">إجمالي الرسائل المعالجة</span>
+            <span class="stat-icon">📨</span>
+          </div>
+          <div class="stat-value" id="stat-total-msgs">0</div>
+          <div class="stat-footer">
+            <span id="stat-msgs-breakdown">وارد: 0 | ردود نوفا: 0</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="--card-accent: var(--accent-pink);">
+          <div class="stat-header">
+            <span class="stat-title">ملفات ذاكرة المستخدمين</span>
+            <span class="stat-icon">👤</span>
+          </div>
+          <div class="stat-value" id="stat-memory-count">0</div>
+          <div class="stat-footer">
+            <span>بطاقات بروفايل محفوظة</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="--card-accent: var(--accent-amber);">
+          <div class="stat-header">
+            <span class="stat-title">المتابعات المجدولة</span>
+            <span class="stat-icon">⏰</span>
+          </div>
+          <div class="stat-value" id="stat-scheduled-tasks">0</div>
+          <div class="stat-footer">
+            <span>مهام انتظار نشطة</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="--card-accent: var(--accent-emerald);">
+          <div class="stat-header">
+            <span class="stat-title">استهلاك التوكنز التقديري</span>
+            <span class="stat-icon">⚡</span>
+          </div>
+          <div class="stat-value" id="stat-tokens">0</div>
+          <div class="stat-footer">
+            <span id="stat-cost-usd">تكلفة تقديرية: $0.00</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="--card-accent: var(--accent-purple);">
+          <div class="stat-header">
+            <span class="stat-title">مزاج نوفا الحالي</span>
+            <span class="stat-icon">🎭</span>
+          </div>
+          <div class="stat-value" id="stat-current-mood" style="font-size: 1.5rem;">Witty ✨</div>
+          <div class="stat-footer">
+            <span>حالة المشاعر اللحظية</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Charts Grid -->
+      <div class="charts-grid">
+        <div class="glass-box">
+          <div class="box-title">
+            <span>📈 حركة الرسائل واستهلاك التوكنز اللحظي</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">مباشر (Real-time)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="chartTraffic"></canvas>
+          </div>
+        </div>
+
+        <div class="glass-box">
+          <div class="box-title">
+            <span>🎭 طيف المشاعر والحالات النفسية</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">توزيع Moods</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="chartEmotions"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Models Architecture Grid -->
+      <div class="glass-box">
+        <div class="box-title">
+          <span>🤖 حالة وتوزيع نماذج الذكاء الاصطناعي النشطة (Active AI Models)</span>
+        </div>
+        <div class="models-grid">
+          <div class="model-card">
+            <div class="model-icon">🗣️</div>
+            <div class="model-info">
+              <h4>الحوار والدردشة (Chat)</h4>
+              <p id="model-chat-name">qwen/qwen3-235b-a22b-2507</p>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-icon">🧮</div>
+            <div class="model-info">
+              <h4>الرياضيات والمعادلات (Math)</h4>
+              <p id="model-math-name">z-ai/glm-5.2</p>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-icon">🖼️</div>
+            <div class="model-info">
+              <h4>تحليل الصور والرؤية (Vision)</h4>
+              <p id="model-vision-name">openai/gpt-5.6-luna</p>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-icon">🎙️</div>
+            <div class="model-info">
+              <h4>تفريغ الفويس نوت (Whisper STT)</h4>
+              <p id="model-whisper-name">whisper-large-v3</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Chats Explorer Tab -->
+    <section id="pane-chats" class="tab-pane">
+      <div class="chats-layout">
+        <!-- Chats List -->
+        <div class="chats-list-pane">
+          <input type="text" id="chat-search" class="search-input" placeholder="🔍 ابحث في المحادثات..." oninput="filterChats()" />
+          <div id="chats-list-container" style="display:flex; flex-direction:column; gap:0.5rem;">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Chat Messages Viewer -->
+        <div class="chat-viewer-pane">
+          <div class="chat-viewer-header">
+            <div>
+              <h3 id="active-chat-title" style="font-size:1rem; font-weight:700;">اختر محادثة لعرض السجل</h3>
+              <p id="active-chat-sub" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">--</p>
+            </div>
+            <div id="active-chat-actions" style="display:none; gap:0.5rem;">
+              <button class="btn btn-danger" onclick="archiveCurrentChat()">📦 أرشفة وتلخيص</button>
+            </div>
+          </div>
+
+          <div id="messages-area" class="messages-scroll-area">
+            <div style="text-align:center; color:var(--text-dim); margin-top:5rem;">
+              قم باختيار محادثة من القائمة لعرض سجل الرسائل المباشر.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Emotions & Memories Tab -->
+    <section id="pane-emotions" class="tab-pane">
+      <div class="emotions-overview">
+        <div class="glass-box mood-meter-card">
+          <div class="mood-badge-large" id="mood-avatar">😎</div>
+          <h3 id="mood-text" style="font-size:1.4rem; font-weight:800;">Witty (روشنة وسرعة بديهة)</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.5rem;">
+            نوفا تتكيف لحظياً مع جو المحادثات وترد بطابع مصري أصيل وخفة دم.
+          </p>
+        </div>
+
+        <div class="glass-box">
+          <div class="box-title">
+            <span>✨ أحدث الأحداث العاطفية والتفاعلات</span>
+          </div>
+          <div id="recent-emotions-container" style="display:flex; flex-direction:column; gap:0.6rem; max-height:220px; overflow-y:auto;">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- User Memory Cards -->
+      <div class="glass-box">
+        <div class="box-title">
+          <span>👥 بطاقات ذاكرة المستخدمين والعلاقات (User Affinities)</span>
+          <button class="btn btn-danger" onclick="clearAllMemoryModal()">🗑️ مسح الذاكرة بالكامل</button>
+        </div>
+        <div id="affinities-container" class="affinities-grid">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Settings Tab -->
+    <section id="pane-settings" class="tab-pane">
+      <div class="settings-grid">
+        <div class="glass-box">
+          <div class="box-title">
+            <span>🛑 حالة تشغيل البوت والسيرفرات</span>
+          </div>
+          <div class="form-group" style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong style="display:block; font-size:0.95rem;">وضع الإغلاق المؤقت (Maintenance Mode)</strong>
+              <p style="font-size:0.8rem; color:var(--text-muted);">عند التفعيل، سيرد البوت فوراً برسالة الصيانة دون استهلاك أي رصيد.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="setting-shutdown" onchange="updateShutdownSetting(this.checked)" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="glass-box">
+          <div class="box-title">
+            <span>👑 رقم هاتف المشرف (Admin Number)</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">رقم واتساب المشرف المعتمد:</label>
+            <div style="display:flex; gap:0.5rem;">
+              <input type="text" id="setting-admin-number" class="search-input" style="direction:ltr;" />
+              <button class="btn btn-primary" onclick="saveAdminNumber()">حفظ</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-box">
+          <div class="box-title">
+            <span>⚡ إجراءات سريعة وتحكم مباشر</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:0.75rem;">
+            <button class="btn btn-primary" onclick="triggerRestartAction()">
+              <span>🔄</span>
+              <span>إعادة تشغيل البوت الهادئة (Soft Restart)</span>
+            </button>
+            <button class="btn btn-success" onclick="toggleGlobalAutoTriggers(true)">
+              <span>🤖</span>
+              <span>تفعيل المشغلات التلقائية لجميع الشاتات النشطة</span>
+            </button>
+            <button class="btn btn-danger" onclick="clearAllMemoryModal()">
+              <span>🧹</span>
+              <span>تصفية بطاقات الذاكرة للمستخدمين (Clear Memory)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Logs Console Tab -->
+    <section id="pane-logs" class="tab-pane">
+      <div class="console-box">
+        <div class="console-header">
+          <div class="console-title">
+            <span>💻</span>
+            <span>Live Output Stream (Console)</span>
+          </div>
+          <div class="console-controls">
+            <input type="text" id="log-search" class="search-input" placeholder="🔍 فلترة اللوجز..." style="padding:0.35rem 0.75rem; font-size:0.75rem;" oninput="filterLogs()" />
+            <button class="btn" style="padding:0.35rem 0.75rem; font-size:0.75rem;" onclick="clearLogsUI()">مسح الشاشة</button>
+            <label style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.35rem; cursor:pointer;">
+              <input type="checkbox" id="auto-scroll" checked />
+              <span>تمرير تلقائي</span>
+            </label>
+          </div>
+        </div>
+        <div id="console-stream" class="console-stream">
+          <!-- Logs stream here -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Profile Modal -->
+  <div id="profile-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title" style="font-size:1rem; font-weight:700;">بطاقة المستخدم</h3>
+        <button class="btn" onclick="closeModal()">✕</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+      <div style="padding:1rem; border-top:1px solid var(--glass-border); display:flex; justify-content:flex-end; gap:0.5rem;">
+        <button id="modal-delete-btn" class="btn btn-danger">حذف الذاكرة</button>
+        <button class="btn" onclick="closeModal()">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast">رسالة تنبيه</div>
+
+  <script>
+    let currentTab = 'overview';
+    let allChats = [];
+    let activeChatID = null;
+    let trafficChart = null;
+    let emotionsChart = null;
+    let logsCache = [];
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      currentTab = tabId;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+      
+      const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(btn => btn.getAttribute('onclick').includes(tabId));
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const targetPane = document.getElementById('pane-' + tabId);
+      if (targetPane) targetPane.classList.add('active');
+
+      if (tabId === 'chats' && allChats.length > 0 && !activeChatID) {
+        selectChat(allChats[0].id, allChats[0].type);
+      }
+    }
+
+    // Toast helper
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    // Cairo Clock
+    function updateClock() {
+      const now = new Date();
+      const options = { timeZone: 'Africa/Cairo', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
+      document.getElementById('cairo-clock').innerText = now.toLocaleTimeString('en-GB', options) + ' بتوقيت القاهرة';
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Fetch Stats
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Update Header Status
+        const pill = document.getElementById('status-pill');
+        const stText = document.getElementById('status-text');
+        const shutBtn = document.getElementById('btn-toggle-shutdown');
+        const shutToggle = document.getElementById('setting-shutdown');
+
+        if (data.is_shutdown) {
+          pill.className = 'status-pill shutdown';
+          stText.innerText = '🔴 مغلق مؤقتاً';
+          shutBtn.className = 'btn btn-success';
+          shutBtn.innerHTML = '<span>🟢</span><span>فتح وتشغيل</span>';
+          if (shutToggle) shutToggle.checked = true;
+        } else {
+          pill.className = 'status-pill';
+          stText.innerText = '🟢 أونلاين ومتاح';
+          shutBtn.className = 'btn btn-danger';
+          shutBtn.innerHTML = '<span>🛑</span><span>إغلاق مؤقت</span>';
+          if (shutToggle) shutToggle.checked = false;
+        }
+
+        document.getElementById('uptime-val').innerText = data.uptime || '--';
+        document.getElementById('stat-total-chats').innerText = data.active_chats || 0;
+        document.getElementById('stat-chats-breakdown').innerText = `${data.groups_count || 0} جروبات | ${data.private_chats_count || 0} خاص`;
+        
+        document.getElementById('stat-total-msgs').innerText = data.total_messages || 0;
+        document.getElementById('stat-msgs-breakdown').innerText = `وارد: ${data.incoming_messages || 0} | ردود نوفا: ${data.nova_messages || 0}`;
+
+        document.getElementById('stat-memory-count').innerText = data.memory_count || 0;
+        document.getElementById('stat-scheduled-tasks').innerText = data.scheduled_tasks || 0;
+
+        document.getElementById('stat-tokens').innerText = (data.estimated_tokens || 0).toLocaleString();
+        document.getElementById('stat-cost-usd').innerText = `تكلفة تقديرية: $${(data.estimated_cost_usd || 0).toFixed(4)}`;
+
+        const moodMap = {
+          happy: 'سعيد ومرح 😃',
+          joking: 'هزار وتريقة 😂',
+          witty: 'روشنة وذكاء ✨',
+          savage: 'قصف جبهات 🔥',
+          neutral: 'هادي ورايق 😌',
+          angry: 'حامي وغاضب 😤',
+          sad: 'متأثر وحزين 🥺'
+        };
+        const moodKey = (data.current_emotion || 'witty').toLowerCase();
+        document.getElementById('stat-current-mood').innerText = moodMap[moodKey] || data.current_emotion;
+
+        if (data.models) {
+          if (data.models.chat) document.getElementById('model-chat-name').innerText = data.models.chat;
+          if (data.models.math) document.getElementById('model-math-name').innerText = data.models.math;
+          if (data.models.vision) document.getElementById('model-vision-name').innerText = data.models.vision;
+          if (data.models.whisper) document.getElementById('model-whisper-name').innerText = data.models.whisper;
+        }
+
+        // Update Charts
+        updateTrafficChart(data.time_series || []);
+        updateEmotionsChart(data.emotions_breakdown || {});
+
+      } catch (err) {
+        console.error("Failed to load stats:", err);
+      }
+    }
+
+    // Chart: Traffic
+    function updateTrafficChart(points) {
+      const labels = points.map(p => p.time);
+      const inData = points.map(p => p.incoming_messages);
+      const outData = points.map(p => p.nova_messages);
+      const tokData = points.map(p => p.tokens);
+
+      const ctx = document.getElementById('chartTraffic').getContext('2d');
+      if (!trafficChart) {
+        trafficChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'رسائل واردة',
+                data: inData,
+                borderColor: '#06b6d4',
+                backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 2
+              },
+              {
+                label: 'ردود نوفا',
+                data: outData,
+                borderColor: '#ec4899',
+                backgroundColor: 'rgba(236, 72, 153, 0.15)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 2
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#94a3b8', font: { family: 'Cairo' } } }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } },
+              y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b' } }
+            }
+          }
+        });
+      } else {
+        trafficChart.data.labels = labels;
+        trafficChart.data.datasets[0].data = inData;
+        trafficChart.data.datasets[1].data = outData;
+        trafficChart.update();
+      }
+    }
+
+    // Chart: Emotions
+    function updateEmotionsChart(breakdown) {
+      const keys = Object.keys(breakdown);
+      const values = Object.values(breakdown);
+      const colors = ['#10b981', '#f59e0b', '#6366f1', '#f43f5e', '#64748b', '#ef4444', '#a855f7'];
+
+      const ctx = document.getElementById('chartEmotions').getContext('2d');
+      if (!emotionsChart) {
+        emotionsChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: keys,
+            datasets: [{
+              data: values,
+              backgroundColor: colors.slice(0, keys.length),
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Cairo', size: 11 } } }
+            },
+            cutout: '65%'
+          }
+        });
+      } else {
+        emotionsChart.data.labels = keys;
+        emotionsChart.data.datasets[0].data = values;
+        emotionsChart.update();
+      }
+    }
+
+    // Fetch Chats List
+    async function fetchChats() {
+      try {
+        const res = await fetch('/api/chats');
+        if (!res.ok) return;
+        const data = await res.json();
+        allChats = data.chats || [];
+        renderChatsList(allChats);
+      } catch (err) {
+        console.error("Failed to load chats:", err);
+      }
+    }
+
+    function renderChatsList(chats) {
+      const container = document.getElementById('chats-list-container');
+      container.innerHTML = '';
+
+      if (chats.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:1rem;">لا توجد محادثات مسجلة بعد.</div>';
+        return;
+      }
+
+      chats.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'chat-item' + (c.id === activeChatID ? ' active' : '');
+        item.onclick = () => selectChat(c.id, c.type);
+        
+        const typeBadge = c.type === 'group' ? '<span class="chat-badge group">جروب</span>' : '<span class="chat-badge">خاص</span>';
+        item.innerHTML = `
+          <div class="chat-item-header">
+            <span class="chat-item-title">${c.display_name}</span>
+            ${typeBadge}
+          </div>
+          <div class="chat-item-snippet">${c.last_message || 'لا توجد رسائل'}</div>
+          <div style="display:flex; justify-content:space-between; margin-top:0.35rem; font-size:0.7rem; color:var(--text-dim);">
+            <span>${c.message_count} رسالة</span>
+            <span>${c.last_message_time ? c.last_message_time.split('T')[0] : ''}</span>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function filterChats() {
+      const q = document.getElementById('chat-search').value.toLowerCase();
+      const filtered = allChats.filter(c => c.display_name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+      renderChatsList(filtered);
+    }
+
+    // Select Chat and load its messages
+    async function selectChat(chatID, chatType) {
+      activeChatID = chatID;
+      renderChatsList(allChats);
+
+      const titleEl = document.getElementById('active-chat-title');
+      const subEl = document.getElementById('active-chat-sub');
+      const actionsEl = document.getElementById('active-chat-actions');
+      const area = document.getElementById('messages-area');
+
+      titleEl.innerText = `محادثة: ${chatID}`;
+      subEl.innerText = `${chatType === 'group' ? 'مجموعة واتساب' : 'محادثة خاصة'} — جاري تحميل الرسائل...`;
+      actionsEl.style.display = 'flex';
+      area.innerHTML = '<div style="text-align:center; color:var(--text-muted);">جاري جلب الرسائل...</div>';
+
+      try {
+        const res = await fetch(`/api/chats?id=${encodeURIComponent(chatID)}&type=${encodeURIComponent(chatType)}&limit=100`);
+        if (!res.ok) throw new Error("Failed to fetch messages");
+        const data = await res.json();
+
+        subEl.innerText = `${chatType === 'group' ? 'مجموعة واتساب' : 'محادثة خاصة'} (${data.message_count} رسالة)`;
+        area.innerHTML = '';
+
+        if (!data.messages || data.messages.length === 0) {
+          area.innerHTML = '<div style="text-align:center; color:var(--text-dim);">لا توجد رسائل مسجلة في هذا الشات.</div>';
+          return;
+        }
+
+        data.messages.forEach(m => {
+          const bubble = document.createElement('div');
+          bubble.className = 'msg-bubble ' + (m.is_nova ? 'nova' : 'user');
+          const sender = m.is_nova ? '✨ Nova' : (m.sender_name || m.sender_id);
+          bubble.innerHTML = `
+            <div style="font-weight:700; font-size:0.75rem; margin-bottom:0.2rem; color:${m.is_nova ? '#a5b4fc' : '#38bdf8'};">${sender}</div>
+            <div>${escapeHTML(m.text)}</div>
+            <div class="msg-meta">
+              <span>${m.timestamp ? m.timestamp.replace('T', ' ').substring(0, 19) : ''}</span>
+              ${m.is_reply ? '<span>↩️ رد مقتبس</span>' : ''}
+            </div>
+          `;
+          area.appendChild(bubble);
+        });
+
+        area.scrollTop = area.scrollHeight;
+      } catch (err) {
+        area.innerHTML = `<div style="color:#f87171; text-align:center;">خطأ في جلب الرسائل: ${err.message}</div>`;
+      }
+    }
+
+    function escapeHTML(str) {
+      return (str || '').replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+
+    // Fetch Emotions and Affinities
+    async function fetchEmotions() {
+      try {
+        const res = await fetch('/api/emotions');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Recent emotions
+        const recCont = document.getElementById('recent-emotions-container');
+        recCont.innerHTML = '';
+        if (data.recent_emotions && data.recent_emotions.length > 0) {
+          data.recent_emotions.slice().reverse().forEach(e => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex; justify-content:space-between; font-size:0.8rem; background:rgba(255,255,255,0.03); padding:0.4rem 0.75rem; border-radius:8px;';
+            row.innerHTML = `
+              <span><strong>${e.user || 'مستخدم'}:</strong> ${e.reaction_emoji || ''} ${e.mood}</span>
+              <span style="color:var(--text-dim);">${e.timestamp ? e.timestamp.split(' ')[1] : ''}</span>
+            `;
+            recCont.appendChild(row);
+          });
+        } else {
+          recCont.innerHTML = '<div style="color:var(--text-dim); text-align:center;">لا توجد أحداث عاطفية مسجلة بعد.</div>';
+        }
+
+        // User Affinities
+        const affCont = document.getElementById('affinities-container');
+        affCont.innerHTML = '';
+        if (data.user_affinities && data.user_affinities.length > 0) {
+          data.user_affinities.forEach(u => {
+            const card = document.createElement('div');
+            card.className = 'affinity-card';
+            card.innerHTML = `
+              <div class="affinity-header">
+                <strong style="font-size:0.95rem;">${u.user_name}</strong>
+                <span class="affinity-badge">${u.affinity_level}</span>
+              </div>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.75rem; height:45px; overflow:hidden;">${escapeHTML(u.profile_summary)}</p>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--text-dim);">
+                <span>📝 ${u.notes_count} ملاحظات</span>
+                <button class="btn" style="padding:0.25rem 0.6rem; font-size:0.75rem;" onclick="viewUserMemory('${u.user_id}', '${encodeURIComponent(u.full_profile)}')">عرض البطاقة</button>
+              </div>
+            `;
+            affCont.appendChild(card);
+          });
+        } else {
+          affCont.innerHTML = '<div style="color:var(--text-dim); grid-column:1/-1; text-align:center;">لا توجد بطاقات ذاكرة مستخدمين حتى الآن.</div>';
+        }
+      } catch (err) {
+        console.error("Failed to load emotions:", err);
+      }
+    }
+
+    // Modal View User Memory
+    function viewUserMemory(userId, encodedProfile) {
+      const profile = decodeURIComponent(encodedProfile);
+      document.getElementById('modal-title').innerText = `بطاقة ذاكرة: ${userId}`;
+      document.getElementById('modal-body').innerText = profile;
+      document.getElementById('modal-delete-btn').onclick = () => deleteUserMemory(userId);
+      document.getElementById('profile-modal').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('profile-modal').classList.remove('open');
+    }
+
+    async function deleteUserMemory(userId) {
+      if (!confirm(`هل أنت متأكد من مسح ذاكرة المستخدم ${userId}؟`)) return;
+      try {
+        const res = await fetch('/api/actions/clear-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId })
+        });
+        if (res.ok) {
+          showToast(`✅ تم مسح ذاكرة ${userId} بنجاح`);
+          closeModal();
+          fetchEmotions();
+          fetchStats();
+        }
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    async function clearAllMemoryModal() {
+      if (!confirm("⚠️ هل أنت متأكد تماماً من تصفية وحذف ذاكرة جميع المستخدمين؟ هذا الإجراء لا يمكن التراجع عنه!")) return;
+      try {
+        const res = await fetch('/api/actions/clear-memory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: true })
+        });
+        if (res.ok) {
+          showToast("✅ تم مسح جميع ملفات الذاكرة بنجاح!");
+          fetchEmotions();
+          fetchStats();
+        }
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    // Settings actions
+    async function toggleShutdown() {
+      try {
+        const res = await fetch('/api/actions/shutdown', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.is_shutdown ? '🔴 تم إغلاق السيرفرات مؤقتاً' : '🟢 تم إعادة فتح وتشغيل السيرفرات');
+        fetchStats();
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    async function updateShutdownSetting(val) {
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_shutdown: val })
+        });
+        showToast(val ? '🔴 تم وضع السيرفر في وضع الصيانة' : '🟢 تم تشغيل السيرفر بنجاح');
+        fetchStats();
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    async function saveAdminNumber() {
+      const num = document.getElementById('setting-admin-number').value.trim();
+      if (!num) return;
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ admin_number: num })
+        });
+        showToast(`✅ تم تحديث رقم الأدمن إلى: ${num}`);
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    async function triggerRestartAction() {
+      if (!confirm("هل تريد إرسال إشارة إعادة التشغيل الهادئة للبوت؟")) return;
+      try {
+        const res = await fetch('/api/actions/restart', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || '✅ تم إرسال إشارة إعادة التشغيل');
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    async function toggleGlobalAutoTriggers(enable) {
+      try {
+        const res = await fetch('/api/actions/auto-triggers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enable, global: true })
+        });
+        showToast("✅ تم تحديث حالة المشغلات التلقائية لجميع الشاتات");
+      } catch (err) {
+        showToast(`❌ خطأ: ${err.message}`);
+      }
+    }
+
+    // Live Logs Stream (SSE + Fallback)
+    function setupLogsStream() {
+      if (window.EventSource) {
+        const evtSource = new EventSource('/api/logs?stream=true');
+        evtSource.onmessage = (event) => {
+          try {
+            const entry = JSON.parse(event.data);
+            appendLogLine(entry);
+          } catch (e) {
+            console.error("Log parse err:", e);
+          }
+        };
+        evtSource.onerror = () => {
+          // SSE reconnect or fallback polling
+        };
+      } else {
+        setInterval(pollLogs, 3000);
+      }
+    }
+
+    async function pollLogs() {
+      try {
+        const res = await fetch('/api/logs?limit=50');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.logs) {
+          data.logs.forEach(l => appendLogLine(l));
+        }
+      } catch (e) {}
+    }
+
+    function appendLogLine(entry) {
+      if (logsCache.some(l => l.id === entry.id)) return;
+      logsCache.push(entry);
+      if (logsCache.length > 500) logsCache.shift();
+
+      const consoleArea = document.getElementById('console-stream');
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = `
+        <span class="log-time">${entry.timestamp || ''}</span>
+        <span class="log-level ${entry.level || 'INFO'}">${entry.level || 'INFO'}</span>
+        <span class="log-msg">${escapeHTML(entry.message)}</span>
+      `;
+      consoleArea.appendChild(line);
+
+      if (document.getElementById('auto-scroll').checked) {
+        consoleArea.scrollTop = consoleArea.scrollHeight;
+      }
+    }
+
+    function filterLogs() {
+      const q = document.getElementById('log-search').value.toLowerCase();
+      const consoleArea = document.getElementById('console-stream');
+      consoleArea.innerHTML = '';
+      const filtered = logsCache.filter(l => (l.message || '').toLowerCase().includes(q) || (l.level || '').toLowerCase().includes(q));
+      filtered.forEach(entry => {
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        line.innerHTML = `
+          <span class="log-time">${entry.timestamp || ''}</span>
+          <span class="log-level ${entry.level || 'INFO'}">${entry.level || 'INFO'}</span>
+          <span class="log-msg">${escapeHTML(entry.message)}</span>
+        `;
+        consoleArea.appendChild(line);
+      });
+    }
+
+    function clearLogsUI() {
+      document.getElementById('console-stream').innerHTML = '';
+    }
+
+    // Refresh All Data
+    function refreshAll(showNotify) {
+      fetchStats();
+      fetchChats();
+      fetchEmotions();
+      if (showNotify) showToast('✅ تم تحديث بيانات لوحة التحكم بنجاح');
+    }
+
+    // Initial Load & Polling
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshAll(false);
+      setupLogsStream();
+      setInterval(() => {
+        fetchStats();
+      }, 5000);
+    });
+  </script>
+</body>
+</html>
