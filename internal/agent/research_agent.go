@@ -48,7 +48,7 @@ func (a *ResearchAgent) Description() string {
 
 // Execute performs deep research using available tools and returns structured factual data.
 func (a *ResearchAgent) Execute(ctx context.Context, req *AgentRequest) (*AgentResponse, error) {
-	if a.client == nil {
+	if a == nil || a.client == nil {
 		return nil, fmt.Errorf("ResearchAgent LLM client is not configured")
 	}
 
@@ -58,22 +58,31 @@ func (a *ResearchAgent) Execute(ctx context.Context, req *AgentRequest) (*AgentR
 2. إذا تطلب السؤال استدعاء أدوات (مثل web_search أو web_reader أو weather)، استخدمها فوراً للحصول على المعلومات الحية قبل الإجابة.
 3. صياغة المعلومات بطريقة دقيقة وموجزة وموثوقة، مع ذكر المصادر والأرقام الواضحة.`
 
+	userMsgText := ""
+	isAdmin := false
+	var execCtx tools.ExecutionContext
+	if req != nil {
+		isAdmin = req.IsAdmin
+		if req.Payload != nil {
+			userMsgText = req.Payload.MessageText
+		}
+		execCtx = tools.ExecutionContext{
+			SenderID:   req.SenderID,
+			SenderName: req.SenderName,
+			ChatID:     req.ChatID,
+			ChatType:   req.ChatType,
+			IsAdmin:    req.IsAdmin,
+		}
+	}
+
 	messages := []LLMMessage{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: req.Payload.MessageText},
+		{Role: "user", Content: userMsgText},
 	}
 
 	var toolDefs []tools.ToolDefinition
 	if a.toolsRegistry != nil {
-		toolDefs = a.toolsRegistry.ToToolDefinitions(req.IsAdmin)
-	}
-
-	execCtx := tools.ExecutionContext{
-		SenderID:   req.SenderID,
-		SenderName: req.SenderName,
-		ChatID:     req.ChatID,
-		ChatType:   req.ChatType,
-		IsAdmin:    req.IsAdmin,
+		toolDefs = a.toolsRegistry.ToToolDefinitions(isAdmin)
 	}
 
 	toolsUsed := make([]string, 0)

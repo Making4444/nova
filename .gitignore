@@ -1,20 +1,44 @@
 # Environment variables and secrets
 .env
+.env.*
+!.env.example
 
 # Runtime data & session files
 data/
+*.db
+*.db-shm
+*.db-wal
 
-# Binary executables
+# Binary executables and builds
+novabot
+novabot.exe
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
 bin/
-/novabot
+dist/
+build/
+
+# Scratch & temporary directories
+scratch/
+.scratch/
+scratch*/
+tmp/
+temp/
+*.tmp
+*.log
+
+# Test & coverage artifacts
+*.test
+*.out
+coverage/
 
 # OS and IDE files
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+*.swp
+*.swo

@@ -37,6 +37,9 @@ type botStats struct {
 }
 
 func (s *botStats) GetTotalChatsCount() int {
+	if s == nil {
+		return 0
+	}
 	count := 0
 	for _, sub := range []string{"data/chats/groups", "data/chats/private"} {
 		if files, err := os.ReadDir(sub); err == nil {
@@ -47,6 +50,9 @@ func (s *botStats) GetTotalChatsCount() int {
 }
 
 func (s *botStats) GetMemoryProfilesCount() int {
+	if s == nil {
+		return 0
+	}
 	if files, err := os.ReadDir("data/users"); err == nil {
 		return len(files)
 	}
@@ -54,13 +60,16 @@ func (s *botStats) GetMemoryProfilesCount() int {
 }
 
 func (s *botStats) GetScheduledTasksCount() int {
-	if s.scheduler != nil {
-		return s.scheduler.GetScheduledTasksCount()
+	if s == nil || s.scheduler == nil {
+		return 0
 	}
-	return 0
+	return s.scheduler.GetScheduledTasksCount()
 }
 
 func (s *botStats) GetModelName() string {
+	if s == nil {
+		return ""
+	}
 	return s.modelName
 }
 

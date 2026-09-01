@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -231,6 +232,10 @@ func (h *EventHandler) HandleEvent(rawEvt interface{}) {
 }
 
 func (h *EventHandler) handleMessageEvent(evt *events.Message) {
+	if evt == nil || evt.Message == nil {
+		return
+	}
+
 	// 1. Loop Protection: Ignore messages sent by Nova's bot process
 	if h.isNovaSent(evt.Info.ID) {
 		return
@@ -254,7 +259,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// 1.5 Handle Voice Note via Groq Whisper STT
 	isVoiceIncoming := (evt.Message.GetAudioMessage() != nil)
-	if isVoiceIncoming && h.groqSTT != nil {
+	if isVoiceIncoming && h.groqSTT != nil && h.waClient != nil && h.waClient.WAClient != nil {
 		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 25*time.Second)
 		audioBytes, dlErr := h.waClient.WAClient.Download(downloadCtx, evt.Message.GetAudioMessage())
 		downloadCancel()
@@ -318,12 +323,17 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		mentionedJIDs = evt.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID()
 	}
 
+	botJID := ""
+	if h.waClient != nil {
+		botJID = h.waClient.GetUserJID().String()
+	}
+
 	triggerMatched := trigger.CheckTriggerWithMentions(
 		cleanText,
 		isReply,
 		admin.CleanInvisibleMarks(repliedText),
 		mentionedJIDs,
-		h.waClient.GetUserJID().String(),
+		botJID,
 	)
 
 	// Feed message to rush tracker & silence breaker
@@ -345,15 +355,17 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// 6. Rate Limiter / Cooldown check per chat
-	if !h.limiter.Allow(chatID) {
+	if h.limiter != nil && !h.limiter.Allow(chatID) {
 		h.logger.Infof("Rate limiter active for chat %s, skipping trigger", chatID)
 		return
 	}
 
 	// Concurrency lock per chat
-	chatLock := h.limiter.GetChatLock(chatID)
-	chatLock.Lock()
-	defer chatLock.Unlock()
+	if h.limiter != nil {
+		chatLock := h.limiter.GetChatLock(chatID)
+		chatLock.Lock()
+		defer chatLock.Unlock()
+	}
 
 	var repliedTo *trigger.RepliedToInfo
 	if isReply {
@@ -365,8 +377,12 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// Download media (images only; PDFs ignored) from direct message or quoted reply
+	var waCli *whatsmeow.Client
+	if h.waClient != nil {
+		waCli = h.waClient.WAClient
+	}
 	downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, h.waClient.WAClient, evt.Message)
+	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, waCli, evt.Message)
 	downloadCancel()
 	if mediaErr != nil {
 		h.logger.Warnf("Could not download media for message %s: %v", messageID, mediaErr)
@@ -420,6 +436,11 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
+	if h.aiClient == nil {
+		h.logger.Errorf("AI client not configured")
+		return
+	}
+
 	h.logger.Infof("Trigger matched in chat %s by %s, generating AI response...", chatID, senderName)
 	aiResp, err := h.aiClient.GenerateResponse(ctx, payload)
 	if err != nil {
@@ -428,7 +449,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// 9. Rule 9: If model returns should_reply: false, do not send anything
-	if !aiResp.ShouldReply {
+	if aiResp == nil || !aiResp.ShouldReply {
 		h.logger.Infof("AI decided not to reply (should_reply: false) for message %s", messageID)
 		return
 	}
@@ -449,6 +470,11 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		strings.Contains(cleanText, "ريكورد") || strings.Contains(cleanText, "صوتي") ||
 		strings.Contains(cleanText, "بصوتك") || strings.Contains(cleanText, "اتكلم")
 	aiWantsVoice := (aiResp.SendAsVoice != nil && *aiResp.SendAsVoice)
+
+	if h.waClient == nil {
+		h.logger.Errorf("WhatsApp client not configured, cannot send reply")
+		return
+	}
 
 	var sentMsgID types.MessageID
 	if (isVoiceIncoming || isVoiceRequested || aiWantsVoice) && h.ttsClient != nil {
@@ -477,9 +503,14 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	h.logger.Infof("Nova replied successfully to message %s (Sent ID: %s)", targetMsgID, sentMsgID)
 
 	// Record Nova's response in chat log
+	botSenderID := ""
+	if h.waClient != nil {
+		botSenderID = h.waClient.GetUserJID().ToNonAD().String()
+	}
+
 	novaLog := storage.LogMessage{
 		MessageID:   string(sentMsgID),
-		SenderID:    h.waClient.GetUserJID().ToNonAD().String(),
+		SenderID:    botSenderID,
 		SenderName:  "Nova",
 		Text:        *aiResp.ReplyText,
 		IsNova:      true,
@@ -487,7 +518,9 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		IsReply:     true,
 		RepliedToID: targetMsgID,
 	}
-	_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+	if h.chatLogger != nil {
+		_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+	}
 
 	// Save memory note if returned by AI
 	if aiResp.MemoryNote != nil && strings.TrimSpace(*aiResp.MemoryNote) != "" {

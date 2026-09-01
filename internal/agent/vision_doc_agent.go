@@ -41,7 +41,7 @@ func (a *VisionDocAgent) Description() string {
 
 // Execute analyzes visual media, documents, or OCR text queries.
 func (a *VisionDocAgent) Execute(ctx context.Context, req *AgentRequest) (*AgentResponse, error) {
-	if a.client == nil {
+	if a == nil || a.client == nil {
 		return nil, fmt.Errorf("VisionDocAgent LLM client is not configured")
 	}
 
@@ -52,12 +52,17 @@ func (a *VisionDocAgent) Execute(ctx context.Context, req *AgentRequest) (*Agent
 3. الإجابة على أي سؤال متعلق بتفاصيل الصورة أو المستند بوضوح وشرح وافٍ.`
 
 	var userContent interface{}
-	userText := req.Payload.MessageText
+	userText := ""
+	var mediaURL *string
+	if req != nil && req.Payload != nil {
+		userText = req.Payload.MessageText
+		mediaURL = req.Payload.MediaDataURL
+	}
 	if strings.TrimSpace(userText) == "" {
 		userText = "حلل هذه الصورة واشرح محتواها وما تحتويه من نصوص أو تفاصيل"
 	}
 
-	if req.Payload.MediaDataURL != nil && *req.Payload.MediaDataURL != "" {
+	if mediaURL != nil && *mediaURL != "" {
 		userContent = []ContentPart{
 			{
 				Type: "text",
@@ -66,7 +71,7 @@ func (a *VisionDocAgent) Execute(ctx context.Context, req *AgentRequest) (*Agent
 			{
 				Type: "image_url",
 				ImageURL: &ImageURLParam{
-					URL: *req.Payload.MediaDataURL,
+					URL: *mediaURL,
 				},
 			},
 		}

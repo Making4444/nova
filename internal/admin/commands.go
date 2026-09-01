@@ -71,14 +71,19 @@ func HandleAdminCommand(
 	}
 
 	cmd := strings.ToLower(parts[0])
-	isAdmin := state.IsAdmin(senderID, senderName, isFromMe)
+	isAdmin := false
+	if state != nil {
+		isAdmin = state.IsAdmin(senderID, senderName, isFromMe)
+	}
 
 	switch cmd {
 	case "shutdown", "suhtdown", "قفل", "اغلاق", "إغلاق":
 		if !isAdmin {
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
-		_ = state.SetShutdown(true)
+		if state != nil {
+			_ = state.SetShutdown(true)
+		}
 		return CommandResult{
 			Handled:   true,
 			ReplyText: "🔴 *تم إغلاق السيرفرات مؤقتاً بنجاح!*\nعند مناداة نوفا، سيتم إرسال رسالة التوقف التلقائية فوراً وبدون استهلاك أي رصيد.",
@@ -88,7 +93,9 @@ func HandleAdminCommand(
 		if !isAdmin {
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
-		_ = state.SetShutdown(false)
+		if state != nil {
+			_ = state.SetShutdown(false)
+		}
 		return CommandResult{
 			Handled:   true,
 			ReplyText: "🟢 *تم إعادة فتح وتشغيل السيرفرات بنجاح!*\nنوفا جاهزة الآن وتستقبل الرسائل وترد بشكل طبيعي.",
@@ -99,7 +106,10 @@ func HandleAdminCommand(
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
 		if len(parts) < 2 {
-			currentLimit := state.GetChatLimit(chatID, 0)
+			currentLimit := 0
+			if state != nil {
+				currentLimit = state.GetChatLimit(chatID, 0)
+			}
 			limitStr := fmt.Sprintf("%d", currentLimit)
 			if currentLimit <= 0 {
 				limitStr = "all (كل الرسائل)"
@@ -125,7 +135,9 @@ func HandleAdminCommand(
 			limit = n
 		}
 
-		_ = state.SetChatLimit(chatID, limit)
+		if state != nil {
+			_ = state.SetChatLimit(chatID, limit)
+		}
 		displayStr := fmt.Sprintf("%d رسالة", limit)
 		if limit == 0 {
 			displayStr = "all (كامل السجل بدون حد)"
@@ -141,7 +153,10 @@ func HandleAdminCommand(
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
 		if len(parts) < 2 {
-			isAuto := state.IsAutoTriggersEnabled(chatID)
+			isAuto := false
+			if state != nil {
+				isAuto = state.IsAutoTriggersEnabled(chatID)
+			}
 			statusStr := "❌ معطلة"
 			if isAuto {
 				statusStr = "✅ مفعلة"
@@ -154,13 +169,17 @@ func HandleAdminCommand(
 
 		action := strings.ToLower(parts[1])
 		if action == "on" || action == "1" || action == "تفعيل" || action == "شغال" {
-			_ = state.SetAutoTriggers(chatID, true)
+			if state != nil {
+				_ = state.SetAutoTriggers(chatID, true)
+			}
 			return CommandResult{
 				Handled:   true,
 				ReplyText: "🤖 *تم تفعيل المشغلات التلقائية المتدرجة في هذا الجروب بنجاح!*\n(كسر الصمت المتدرج بعد 3 ساعات ثم 6 ساعات ثم القفل التلقائي، التفاعل مع فوران الرسائل، تحية الصباح، والترحيب بالأعضاء الجدد).",
 			}
 		} else if action == "off" || action == "0" || action == "ايقاف" || action == "تعطيل" {
-			_ = state.SetAutoTriggers(chatID, false)
+			if state != nil {
+				_ = state.SetAutoTriggers(chatID, false)
+			}
 			return CommandResult{
 				Handled:   true,
 				ReplyText: "🛑 *تم إيقاف المشغلات التلقائية في هذا الجروب بنجاح.*",
@@ -290,22 +309,28 @@ func HandleAdminCommand(
 
 	case "status", "statue", "stats", "حالة", "تقرير":
 		statusIcon := "🟢 أونلاين (شغال)"
-		if state.GetShutdown() {
+		if state != nil && state.GetShutdown() {
 			statusIcon = "🔴 مغلق مؤقتاً (Maintenance)"
 		}
 
 		autoStatus := "❌ معطلة"
-		if state.IsAutoTriggersEnabled(chatID) {
+		if state != nil && state.IsAutoTriggersEnabled(chatID) {
 			autoStatus = "✅ مفعلة"
 		}
 
-		currentLimit := state.GetChatLimit(chatID, 0)
+		currentLimit := 0
+		if state != nil {
+			currentLimit = state.GetChatLimit(chatID, 0)
+		}
 		limitStr := fmt.Sprintf("%d رسالة", currentLimit)
 		if currentLimit <= 0 {
 			limitStr = "all (كامل السجل)"
 		}
 
-		uptime := state.GetUptimeString()
+		uptime := "0 ثانية"
+		if state != nil {
+			uptime = state.GetUptimeString()
+		}
 
 		var totalChats, memProfiles, scheduledTasks int
 		modelName := "Default"

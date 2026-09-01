@@ -89,6 +89,9 @@ func CleanTextForSpeech(text string) string {
 
 // SynthesizeToOggOpus generates speech from text via OpenRouter gpt-audio-mini and converts it to WhatsApp OGG Opus format.
 func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([]byte, uint32, error) {
+	if t == nil {
+		return nil, 0, fmt.Errorf("openRouter TTS is nil")
+	}
 	cleanText := CleanTextForSpeech(text)
 	if cleanText == "" {
 		return nil, 0, fmt.Errorf("input text cannot be empty")

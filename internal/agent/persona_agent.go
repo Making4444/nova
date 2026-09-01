@@ -44,11 +44,14 @@ func (a *PersonaAgent) Description() string {
 
 // Execute generates a rich Egyptian persona response aligned with the current emotional state.
 func (a *PersonaAgent) Execute(ctx context.Context, req *AgentRequest) (*AgentResponse, error) {
-	if a.client == nil {
+	if a == nil || a.client == nil {
 		return nil, fmt.Errorf("PersonaAgent LLM client is not configured")
 	}
 
-	systemPrompt := req.SystemPrompt
+	systemPrompt := ""
+	if req != nil {
+		systemPrompt = req.SystemPrompt
+	}
 	if systemPrompt == "" {
 		systemPrompt = `أنت شاب مصري جدع اسمك "نوفا". لسانك حامي، دمك خفيف، لماح، بتفهم في الأصول والروشنة والشارع المصري.
 قواعدك الأساسية:
@@ -67,14 +70,20 @@ func (a *PersonaAgent) Execute(ctx context.Context, req *AgentRequest) (*AgentRe
 	}
 
 	// Append rich emotion context if available
-	if req.EmotionPrompt != "" {
+	if req != nil && req.EmotionPrompt != "" {
 		systemPrompt += "\n\n" + req.EmotionPrompt
 	}
 
 	// Prepare user payload context
-	payloadBytes, err := json.Marshal(req.Payload)
-	if err != nil {
-		payloadBytes = []byte(req.Payload.MessageText)
+	var payloadBytes []byte
+	if req != nil && req.Payload != nil {
+		var err error
+		payloadBytes, err = json.Marshal(req.Payload)
+		if err != nil {
+			payloadBytes = []byte(req.Payload.MessageText)
+		}
+	} else if req != nil {
+		payloadBytes = []byte(req.UserMemory)
 	}
 
 	messages := []LLMMessage{

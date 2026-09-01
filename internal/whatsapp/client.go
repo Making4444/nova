@@ -81,14 +81,14 @@ func (c *Client) Connect(ctx context.Context) error {
 
 // Disconnect disconnects the WhatsApp client.
 func (c *Client) Disconnect() {
-	if c.WAClient != nil {
+	if c != nil && c.WAClient != nil {
 		c.WAClient.Disconnect()
 	}
 }
 
 // SendReply sends a reply message quoting the given message ID.
 func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText string, replyToID string, replyToSender string) (types.MessageID, error) {
-	if c.WAClient == nil {
+	if c == nil || c.WAClient == nil {
 		return "", fmt.Errorf("whatsapp client not initialized")
 	}
 
@@ -104,7 +104,7 @@ func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText str
 
 // GetUserJID returns the bot's own JID.
 func (c *Client) GetUserJID() types.JID {
-	if c.WAClient != nil && c.WAClient.Store != nil && c.WAClient.Store.ID != nil {
+	if c != nil && c.WAClient != nil && c.WAClient.Store != nil && c.WAClient.Store.ID != nil {
 		return *c.WAClient.Store.ID
 	}
 	return types.EmptyJID
@@ -112,5 +112,5 @@ func (c *Client) GetUserJID() types.JID {
 
 // IsConnected returns whether the client is currently connected.
 func (c *Client) IsConnected() bool {
-	return c.WAClient != nil && c.WAClient.IsConnected()
+	return c != nil && c.WAClient != nil && c.WAClient.IsConnected()
 }

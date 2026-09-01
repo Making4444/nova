@@ -44,13 +44,16 @@ func (s *MemoryStore) getUserMutex(userID string) *sync.Mutex {
 }
 
 func (s *MemoryStore) getFilePath(userID string) string {
+	if s == nil {
+		return ""
+	}
 	safeID := sanitizeID(userID)
 	return filepath.Join(s.baseDir, safeID+".md")
 }
 
 // GetUserMemory returns the full memory text of a user if it exists.
 func (s *MemoryStore) GetUserMemory(userID string) (string, error) {
-	if userID == "" {
+	if s == nil || userID == "" {
 		return "", nil
 	}
 

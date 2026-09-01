@@ -45,6 +45,9 @@ type groqTranscriptionResponse struct {
 
 // TranscribeAudio sends audio bytes (e.g. ogg/opus/mp3/m4a) to Groq Whisper and returns the transcribed text.
 func (g *GroqSTT) TranscribeAudio(ctx context.Context, audioBytes []byte, filename string) (string, error) {
+	if g == nil {
+		return "", fmt.Errorf("groq STT is nil")
+	}
 	if g.apiKey == "" {
 		return "", fmt.Errorf("GROQ_API_KEY is not configured")
 	}

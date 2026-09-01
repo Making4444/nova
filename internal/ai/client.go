@@ -256,8 +256,14 @@ type openRouterResponse struct {
 
 // GenerateResponse sends the payload to OpenRouter using multi-model smart routing.
 func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigger.RequestPayload) (*ResponsePayload, error) {
+	if c == nil {
+		return nil, errors.New("OpenRouterClient is nil")
+	}
 	if c.apiKey == "" {
 		return nil, errors.New("OPENROUTER_API_KEY is not set")
+	}
+	if payload == nil {
+		return nil, errors.New("cannot generate response for nil payload")
 	}
 
 	// 1. Smart Model Selection
@@ -360,6 +366,9 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 
 // SolveMathDirectly invokes GLM-5.2 directly to solve mathematical questions.
 func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem string) (string, error) {
+	if c == nil {
+		return "", errors.New("OpenRouterClient is nil")
+	}
 	messages := []openRouterMessage{
 		{
 			Role:    "system",
@@ -569,6 +578,9 @@ func (c *OpenRouterClient) callAPI(ctx context.Context, model string, messages [
 
 // SummarizeChatHistory analyzes raw messages from a conversation and generates a structured summary + user profiles.
 func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesText string) (string, map[string]string, error) {
+	if c == nil {
+		return "", nil, errors.New("OpenRouterClient is nil")
+	}
 	if c.apiKey == "" {
 		return "", nil, errors.New("OPENROUTER_API_KEY is not set")
 	}

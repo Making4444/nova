@@ -140,12 +140,12 @@ type SwarmConfig struct {
 // DefaultSwarmConfig returns standard recommended models for the Swarm.
 func DefaultSwarmConfig() *SwarmConfig {
 	return &SwarmConfig{
-		ModelResearch:           "google/gemini-2.5-flash", // Fast, accurate web & fact synthesizer
-		ModelMathCoding:         "deepseek/deepseek-r1",     // High-IQ reasoning model
-		ModelVisionDoc:          "openai/gpt-5.6-luna",      // High-precision multimodal vision & OCR model
-		ModelPersona:            "google/gemini-2.5-flash", // Low-cost, witty conversational model
-		ModelSynthesizer:        "google/gemini-2.5-flash", // Authentic Egyptian persona compiler
-		ModelRouter:             "meta-llama/llama-3.3-70b-instruct",
+		ModelResearch:           "qwen/qwen3-30b-a3b-2507",        // Super fast & economical research ($0.048 / $0.193 per 1M)
+		ModelMathCoding:         "nvidia/nemotron-3-super",         // Top tier AIME 2025 & SWE-Bench reasoning ($0.085 / $0.40 per 1M)
+		ModelVisionDoc:          "google/gemma-4-31b",              // Vision, documents & OCR reasoning ($0.09 / $0.34 per 1M)
+		ModelPersona:            "qwen/qwen3-235b-a22b-2507",       // Master of Egyptian dialect & witty persona ($0.0875 / $0.35 per 1M)
+		ModelSynthesizer:        "qwen/qwen3-235b-a22b-2507",       // Authentic Egyptian compiler ($0.0875 / $0.35 per 1M)
+		ModelRouter:             "qwen/qwen3.8-27b",                // Fast Groq & hybrid router
 		EnableEgyptianSynthesis: true,
 		MaxToolSteps:            4,
 		Temperature:             0.7,
@@ -154,6 +154,9 @@ func DefaultSwarmConfig() *SwarmConfig {
 
 // ToResponsePayload converts an AgentResponse to the standard ai.ResponsePayload.
 func (r *AgentResponse) ToResponsePayload(targetMsgID string) *ai.ResponsePayload {
+	if r == nil {
+		return nil
+	}
 	reply := r.Content
 	var moodPtr *string
 	if r.Mood != "" {

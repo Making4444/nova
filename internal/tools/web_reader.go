@@ -106,10 +106,13 @@ func IsPrivateIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() || ip.IsUnspecified() {
 		return true
 	}
-	// Extra checks for IPv4 0.0.0.0/8, 169.254.0.0/16
+	// Extra checks for IPv4 0.0.0.0/8, 169.254.0.0/16, 100.64.0.0/10, 198.18.0.0/15
 	ipv4 := ip.To4()
 	if ipv4 != nil {
-		if ipv4[0] == 0 || (ipv4[0] == 169 && ipv4[1] == 254) {
+		if ipv4[0] == 0 ||
+			(ipv4[0] == 169 && ipv4[1] == 254) ||
+			(ipv4[0] == 100 && (ipv4[1] >= 64 && ipv4[1] <= 127)) ||
+			(ipv4[0] == 198 && (ipv4[1] == 18 || ipv4[1] == 19)) {
 			return true
 		}
 	}
@@ -117,6 +120,9 @@ func IsPrivateIP(ip net.IP) bool {
 }
 
 func (w *WebReaderTool) validateURL(rawURL string) (*url.URL, error) {
+	if w == nil {
+		return nil, errors.New("web reader tool is nil")
+	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL format: %w", err)
@@ -133,9 +139,17 @@ func (w *WebReaderTool) validateURL(rawURL string) (*url.URL, error) {
 	}
 
 	if !w.allowPrivateIPs {
-		// Resolve IP to prevent SSRF
-		ips, err := net.LookupIP(hostname)
-		if err == nil {
+		// If hostname is an IP literal
+		if ip := net.ParseIP(hostname); ip != nil {
+			if IsPrivateIP(ip) {
+				return nil, fmt.Errorf("access to private/local network address %s is forbidden", ip.String())
+			}
+		} else {
+			// Resolve IP to prevent SSRF
+			ips, err := net.LookupIP(hostname)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve hostname %s: %w", hostname, err)
+			}
 			for _, ip := range ips {
 				if IsPrivateIP(ip) {
 					return nil, fmt.Errorf("access to private/local network address %s (%s) is forbidden", hostname, ip.String())

@@ -46,6 +46,9 @@ func NewLogHub(maxLogs int) *LogHub {
 
 // AddLog records a new log entry and broadcasts it to connected SSE streams.
 func (h *LogHub) AddLog(level, msg string) {
+	if h == nil {
+		return
+	}
 	id := atomic.AddInt64(&h.counter, 1)
 	entry := LogEntry{
 		ID:        id,
@@ -73,6 +76,9 @@ func (h *LogHub) AddLog(level, msg string) {
 
 // GetRecentLogs returns the latest N log entries.
 func (h *LogHub) GetRecentLogs(limit int) []LogEntry {
+	if h == nil {
+		return nil
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -90,6 +96,11 @@ func (h *LogHub) GetRecentLogs(limit int) []LogEntry {
 
 // Subscribe returns a channel receiving new log entries and an unsubscribe function.
 func (h *LogHub) Subscribe() (chan LogEntry, func()) {
+	if h == nil {
+		ch := make(chan LogEntry, 1)
+		close(ch)
+		return ch, func() {}
+	}
 	ch := make(chan LogEntry, 100)
 	h.mu.Lock()
 	h.subscribers[ch] = struct{}{}
@@ -171,6 +182,9 @@ func NewMetricsTracker() *MetricsTracker {
 
 // RecordEvent records an interaction with mood, tokens, and messages.
 func (t *MetricsTracker) RecordEvent(isNova bool, tokens int, mood, emoji, sender, chatID, snippet string) {
+	if t == nil {
+		return
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -236,6 +250,9 @@ func (t *MetricsTracker) RecordEvent(isNova bool, tokens int, mood, emoji, sende
 
 // GetMoodStats returns copy of mood distribution and percentages.
 func (t *MetricsTracker) GetMoodStats() (string, map[string]int, map[string]float64, []EmotionEvent) {
+	if t == nil {
+		return "witty", nil, nil, nil
+	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -261,6 +278,9 @@ func (t *MetricsTracker) GetMoodStats() (string, map[string]int, map[string]floa
 
 // GetCounts returns totals.
 func (t *MetricsTracker) GetCounts() (incoming, nova, tokens int64, points []TimeSeriesPoint) {
+	if t == nil {
+		return 0, 0, 0, nil
+	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 

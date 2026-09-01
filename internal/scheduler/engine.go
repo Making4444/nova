@@ -187,7 +187,10 @@ func (e *Engine) Stop() {
 }
 
 func (e *Engine) checkDueTasks() {
-	if e.state.GetShutdown() {
+	if e == nil {
+		return
+	}
+	if e.state != nil && e.state.GetShutdown() {
 		return
 	}
 
@@ -211,10 +214,18 @@ func (e *Engine) checkDueTasks() {
 }
 
 func (e *Engine) executeTask(task ScheduledTask) {
+	if e == nil || e.aiClient == nil || e.dispatcher == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	promptText := fmt.Sprintf("حان موعد المتابعة المجدولة في الشات! (السبب اللي حددتيه: %s). وجهي رسالة مبادرة طبيعية وذكية للجروب بالعامية المصرية بخصوص هذا الموضوع.", task.Reason)
+
+	chatLimit := 0
+	if e.state != nil {
+		chatLimit = e.state.GetChatLimit(task.ChatID, 0)
+	}
 
 	payload, err := trigger.BuildContext(
 		e.chatLogger,
@@ -229,7 +240,7 @@ func (e *Engine) executeTask(task ScheduledTask) {
 		false,
 		nil,
 		nil,
-		e.state.GetChatLimit(task.ChatID, 0),
+		chatLimit,
 	)
 	if err != nil {
 		return
@@ -299,7 +310,7 @@ func (e *Engine) RecordIncomingMessageForRush(chatID string, wasTriggerMatched b
 
 // TriggerNewMemberJoined fires Trigger 5 when a new member joins.
 func (e *Engine) TriggerNewMemberJoined(chatID, newMemberName string) {
-	if !e.state.IsAutoTriggersEnabled(chatID) || e.state.GetShutdown() {
+	if e == nil || !e.canTriggerAuto(chatID) {
 		return
 	}
 	prompt := fmt.Sprintf("فيه عضو جديد انضم للجروب دلوقتي (اسمه: %s). رحبي بيه ترحيب مصري أصيل وخفة دم وروشي عليه بروقان!", newMemberName)
@@ -307,14 +318,14 @@ func (e *Engine) TriggerNewMemberJoined(chatID, newMemberName string) {
 }
 
 func (e *Engine) canTriggerAuto(chatID string) bool {
-	if !e.state.IsAutoTriggersEnabled(chatID) || e.state.GetShutdown() {
+	if e == nil || e.state == nil || !e.state.IsAutoTriggersEnabled(chatID) || e.state.GetShutdown() {
 		return false
 	}
 	return true
 }
 
 func (e *Engine) checkAutomatedTriggers() {
-	if e.state.GetShutdown() {
+	if e == nil || e.state == nil || e.state.GetShutdown() {
 		return
 	}
 
@@ -420,8 +431,16 @@ func (e *Engine) checkAutomatedTriggers() {
 }
 
 func (e *Engine) triggerProactive(chatID, chatType, promptText string) {
+	if e == nil || e.aiClient == nil || e.dispatcher == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	chatLimit := 0
+	if e.state != nil {
+		chatLimit = e.state.GetChatLimit(chatID, 0)
+	}
 
 	payload, err := trigger.BuildContext(
 		e.chatLogger,
@@ -436,7 +455,7 @@ func (e *Engine) triggerProactive(chatID, chatType, promptText string) {
 		false,
 		nil,
 		nil,
-		e.state.GetChatLimit(chatID, 0),
+		chatLimit,
 	)
 	if err != nil {
 		return

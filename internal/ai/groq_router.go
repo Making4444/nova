@@ -51,7 +51,7 @@ type groqChatRequest struct {
 
 // ClassifyQuery returns "math" if the query is a mathematical/logic problem, or "chat" otherwise.
 func (r *GroqRouter) ClassifyQuery(ctx context.Context, text string) QueryCategory {
-	if r.apiKey == "" || strings.TrimSpace(text) == "" {
+	if r == nil || r.apiKey == "" || strings.TrimSpace(text) == "" {
 		return fallbackClassify(text)
 	}
 

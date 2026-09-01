@@ -150,9 +150,13 @@ func BuildContext(
 	historyLimit int,
 ) (*RequestPayload, error) {
 	// Fetch recent messages
-	recentLogs, err := chatLogger.GetRecentMessages(chatType, chatID, historyLimit)
-	if err != nil {
-		return nil, err
+	var recentLogs []storage.LogMessage
+	if chatLogger != nil {
+		logs, err := chatLogger.GetRecentMessages(chatType, chatID, historyLimit)
+		if err != nil {
+			return nil, err
+		}
+		recentLogs = logs
 	}
 
 	recentContext := make([]ContextMessage, 0, len(recentLogs))

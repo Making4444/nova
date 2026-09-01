@@ -116,6 +116,15 @@ func (e *Engine) getFilePath(chatID string) string {
 
 // GetState returns the current emotional state for a chat, initializing default if not found.
 func (e *Engine) GetState(chatID string) *EmotionalState {
+	if e == nil {
+		return &EmotionalState{
+			CurrentMood:     Joyful,
+			EnergyLevel:     7,
+			UserAffinities:  make(map[string]int),
+			LastInteraction: time.Now(),
+			RecentTriggers:  make([]string, 0),
+		}
+	}
 	cmu := e.getChatMutex(chatID)
 	cmu.Lock()
 	defer cmu.Unlock()
@@ -187,6 +196,15 @@ func (e *Engine) addTrigger(st *EmotionalState, trigger string) {
 
 // UpdateMood adjusts Nova's emotional state based on message context, sender identity, and sentiment.
 func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, isMaker bool, sentiment string) *EmotionalState {
+	if e == nil {
+		return &EmotionalState{
+			CurrentMood:     Joyful,
+			EnergyLevel:     7,
+			UserAffinities:  make(map[string]int),
+			LastInteraction: time.Now(),
+			RecentTriggers:  make([]string, 0),
+		}
+	}
 	cmu := e.getChatMutex(chatID)
 	cmu.Lock()
 	defer cmu.Unlock()
@@ -285,12 +303,18 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 
 // BuildPromptContext generates a rich Egyptian Arabic prompt context detailing Nova's emotional state.
 func (e *Engine) BuildPromptContext(chatID string, senderID string, senderName string, isMaker bool) string {
+	if e == nil {
+		return ""
+	}
 	st := e.GetState(chatID)
+	if st == nil {
+		return ""
+	}
 
 	affinity := 50
 	if isMaker {
 		affinity = 100
-	} else if senderID != "" {
+	} else if senderID != "" && st.UserAffinities != nil {
 		if val, exists := st.UserAffinities[senderID]; exists {
 			affinity = val
 		}

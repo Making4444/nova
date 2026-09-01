@@ -166,7 +166,10 @@ func (s *Swarm) Synthesize(
 		return nil, fmt.Errorf("cannot synthesize nil agent response")
 	}
 
-	targetMsgID := req.Payload.MessageID
+	var targetMsgID string
+	if req != nil && req.Payload != nil {
+		targetMsgID = req.Payload.MessageID
+	}
 
 	// A. If already produced by PersonaAgent, it is already in authentic Egyptian dialect
 	if agentType == AgentTypePersona {
@@ -174,13 +177,20 @@ func (s *Swarm) Synthesize(
 	}
 
 	// B. If multi-agent synthesis is enabled and LLM client is available
-	s.mu.RLock()
-	enableSynthesis := s.config.EnableEgyptianSynthesis
-	synthModel := s.config.ModelSynthesizer
-	client := s.llmClient
-	s.mu.RUnlock()
+	var enableSynthesis bool
+	var synthModel string
+	var client LLMClient
+	if s != nil {
+		s.mu.RLock()
+		if s.config != nil {
+			enableSynthesis = s.config.EnableEgyptianSynthesis
+			synthModel = s.config.ModelSynthesizer
+		}
+		client = s.llmClient
+		s.mu.RUnlock()
+	}
 
-	if enableSynthesis && client != nil && synthModel != "" {
+	if enableSynthesis && client != nil && synthModel != "" && req != nil {
 		compiled, err := s.synthesizeWithLLM(ctx, client, synthModel, agentType, agentResp, req)
 		if err == nil && compiled != nil {
 			return compiled, nil
@@ -217,14 +227,19 @@ func (s *Swarm) synthesizeWithLLM(
 }`
 
 	systemPrompt = fmt.Sprintf(systemPrompt, agentType)
-	if req.EmotionPrompt != "" {
+	if req != nil && req.EmotionPrompt != "" {
 		systemPrompt += "\n\n" + req.EmotionPrompt
+	}
+
+	userMsgText := ""
+	if req != nil && req.Payload != nil {
+		userMsgText = req.Payload.MessageText
 	}
 
 	userContent := fmt.Sprintf(`سؤال المستخدم: %s
 
 النتائج المكتشفة من الوكيل المتخصص (%s):
-%s`, req.Payload.MessageText, agentResp.AgentName, agentResp.Content)
+%s`, userMsgText, agentResp.AgentName, agentResp.Content)
 
 	messages := []LLMMessage{
 		{Role: "system", Content: systemPrompt},
@@ -254,7 +269,10 @@ func (s *Swarm) synthesizeWithLLM(
 		return nil, err
 	}
 
-	targetMsgID := req.Payload.MessageID
+	var targetMsgID string
+	if req != nil && req.Payload != nil {
+		targetMsgID = req.Payload.MessageID
+	}
 	reply := agentResp.Content
 	if parsed.ReplyText != nil && strings.TrimSpace(*parsed.ReplyText) != "" {
 		reply = *parsed.ReplyText
@@ -308,7 +326,10 @@ func (s *Swarm) synthesizeWithLLM(
 
 // synthesizeDeterministic wraps specialized agent output with an authentic Egyptian tone without requiring an extra LLM call.
 func (s *Swarm) synthesizeDeterministic(agentType AgentType, agentResp *AgentResponse, req *AgentRequest) *ai.ResponsePayload {
-	targetMsgID := req.Payload.MessageID
+	var targetMsgID string
+	if req != nil && req.Payload != nil {
+		targetMsgID = req.Payload.MessageID
+	}
 	var intro string
 
 	switch agentType {
@@ -324,7 +345,7 @@ func (s *Swarm) synthesizeDeterministic(agentType AgentType, agentResp *AgentRes
 
 	fullReply := intro + agentResp.Content
 	mood := "Joyful"
-	if req.EmotionState != nil {
+	if req != nil && req.EmotionState != nil {
 		mood = string(req.EmotionState.CurrentMood)
 	}
 
@@ -351,8 +372,16 @@ func (s *Swarm) buildAgentRequest(
 	emoPrompt string,
 	isMaker bool,
 ) *AgentRequest {
+	if payload == nil {
+		return &AgentRequest{
+			IsMaker:       isMaker,
+			EmotionState:  emoState,
+			EmotionPrompt: emoPrompt,
+		}
+	}
+
 	var toolDefs []tools.ToolDefinition
-	if s.toolsRegistry != nil {
+	if s != nil && s.toolsRegistry != nil {
 		toolDefs = s.toolsRegistry.ToToolDefinitions(false)
 	}
 
@@ -363,6 +392,11 @@ func (s *Swarm) buildAgentRequest(
 	var chatSum string
 	if payload.ChatSummary != nil {
 		chatSum = *payload.ChatSummary
+	}
+
+	sysPrompt := ""
+	if s != nil {
+		sysPrompt = s.systemPrompt
 	}
 
 	return &AgentRequest{
@@ -382,7 +416,7 @@ func (s *Swarm) buildAgentRequest(
 		TimeOfDay:            payload.TimeOfDay,
 		TimeSinceLastMessage: payload.TimeSinceLastMessage,
 		MediaDataURL:         payload.MediaDataURL,
-		SystemPrompt:         s.systemPrompt,
+		SystemPrompt:         sysPrompt,
 	}
 }
 

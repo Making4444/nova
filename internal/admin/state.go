@@ -67,11 +67,37 @@ func (s *State) save() error {
 	return os.WriteFile(s.filePath, data, 0644)
 }
 
+// SetAdminNumber updates the configured admin phone number thread-safely.
+func (s *State) SetAdminNumber(number string) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.AdminNumber = strings.TrimSpace(number)
+	return s.save()
+}
+
+// GetAdminNumber returns the configured admin number thread-safely.
+func (s *State) GetAdminNumber() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.AdminNumber
+}
+
 // IsAdmin checks if sender JID/Phone matches the admin number or if the message is from the owner.
 func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool {
 	if isFromMe {
 		return true
 	}
+	if s == nil {
+		return false
+	}
+
+	adminNum := s.GetAdminNumber()
 
 	cleanSender := strings.TrimSuffix(senderID, "@s.whatsapp.net")
 	cleanSender = strings.TrimSuffix(cleanSender, "@c.us")
@@ -79,22 +105,22 @@ func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool 
 	cleanSender = strings.TrimPrefix(cleanSender, "+")
 	cleanSender = strings.TrimSpace(cleanSender)
 
-	cleanAdmin := strings.TrimPrefix(s.AdminNumber, "+")
+	cleanAdmin := strings.TrimPrefix(adminNum, "+")
 	cleanAdmin = strings.TrimSpace(cleanAdmin)
 
 	// Direct match or 01... vs 201... match
-	if cleanSender == cleanAdmin {
+	if cleanSender == cleanAdmin && cleanAdmin != "" {
 		return true
 	}
-	if strings.HasPrefix(cleanAdmin, "20") && cleanSender == "0"+cleanAdmin[2:] {
+	if len(cleanAdmin) > 2 && strings.HasPrefix(cleanAdmin, "20") && cleanSender == "0"+cleanAdmin[2:] {
 		return true
 	}
-	if strings.HasPrefix(cleanSender, "20") && cleanAdmin == "0"+cleanSender[2:] {
+	if len(cleanSender) > 2 && strings.HasPrefix(cleanSender, "20") && cleanAdmin == "0"+cleanSender[2:] {
 		return true
 	}
 
 	// Match by known admin LID or phone number
-	if strings.Contains(senderID, "105012604760193") || strings.Contains(senderID, cleanAdmin) {
+	if strings.Contains(senderID, "105012604760193") || (cleanAdmin != "" && strings.Contains(senderID, cleanAdmin)) {
 		return true
 	}
 
@@ -103,6 +129,9 @@ func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool 
 
 // SetShutdown toggles or sets the shutdown mode.
 func (s *State) SetShutdown(val bool) error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.IsShutdown = val
@@ -111,6 +140,9 @@ func (s *State) SetShutdown(val bool) error {
 
 // GetShutdown returns current shutdown status.
 func (s *State) GetShutdown() bool {
+	if s == nil {
+		return false
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.IsShutdown
@@ -118,6 +150,9 @@ func (s *State) GetShutdown() bool {
 
 // SetChatLimit sets message history limit for a specific chat.
 func (s *State) SetChatLimit(chatID string, limit int) error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ChatLimits[chatID] = limit
@@ -126,6 +161,9 @@ func (s *State) SetChatLimit(chatID string, limit int) error {
 
 // GetChatLimit returns limit for chat or fallback.
 func (s *State) GetChatLimit(chatID string, defaultLimit int) int {
+	if s == nil {
+		return defaultLimit
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if limit, exists := s.ChatLimits[chatID]; exists {
@@ -136,6 +174,9 @@ func (s *State) GetChatLimit(chatID string, defaultLimit int) int {
 
 // SetAutoTriggers enables or disables automated triggers for a specific chat.
 func (s *State) SetAutoTriggers(chatID string, enabled bool) error {
+	if s == nil {
+		return nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.AutoTriggersEnabled[chatID] = enabled
@@ -144,6 +185,9 @@ func (s *State) SetAutoTriggers(chatID string, enabled bool) error {
 
 // IsAutoTriggersEnabled checks if automated triggers are on for a chat.
 func (s *State) IsAutoTriggersEnabled(chatID string) bool {
+	if s == nil {
+		return false
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.AutoTriggersEnabled[chatID]
@@ -151,6 +195,9 @@ func (s *State) IsAutoTriggersEnabled(chatID string) bool {
 
 // GetActiveAutoChats returns list of chatIDs with auto triggers enabled.
 func (s *State) GetActiveAutoChats() []string {
+	if s == nil {
+		return nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	res := make([]string, 0, len(s.AutoTriggersEnabled))
@@ -164,6 +211,9 @@ func (s *State) GetActiveAutoChats() []string {
 
 // GetUptimeString returns human readable uptime.
 func (s *State) GetUptimeString() string {
+	if s == nil {
+		return "0 ثانية"
+	}
 	d := time.Since(s.StartTime)
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60

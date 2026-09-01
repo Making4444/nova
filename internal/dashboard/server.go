@@ -423,8 +423,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 				s.logHub.AddLog("INFO", fmt.Sprintf("Admin set auto triggers for %s to %v via Dashboard", req.ChatID, *req.AutoTriggers))
 			}
 			if req.AdminNumber != nil && strings.TrimSpace(*req.AdminNumber) != "" {
-				s.adminState.AdminNumber = strings.TrimSpace(*req.AdminNumber)
-				s.logHub.AddLog("INFO", fmt.Sprintf("Admin number updated to %s via Dashboard", s.adminState.AdminNumber))
+				_ = s.adminState.SetAdminNumber(*req.AdminNumber)
+				s.logHub.AddLog("INFO", fmt.Sprintf("Admin number updated to %s via Dashboard", s.adminState.GetAdminNumber()))
 			}
 		}
 
@@ -571,6 +571,7 @@ func (s *Server) handleActionClearMemory(w http.ResponseWriter, r *http.Request)
 	if req.UserID != "" {
 		// Sanitize to prevent path traversal
 		cleanID := filepath.Base(req.UserID)
+		cleanID = strings.TrimSuffix(cleanID, ".md")
 		targetFile := filepath.Join(usersDir, cleanID+".md")
 		_ = os.Remove(targetFile)
 

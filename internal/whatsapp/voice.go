@@ -19,7 +19,7 @@ func (c *Client) SendVoiceNote(
 	replyToID string,
 	replyToSender string,
 ) (types.MessageID, error) {
-	if c.WAClient == nil {
+	if c == nil || c.WAClient == nil {
 		return "", fmt.Errorf("whatsapp client not initialized")
 	}
 

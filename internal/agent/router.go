@@ -57,11 +57,11 @@ func (r *Router) RegisterRule(name string, rule func(text string, hasMedia bool)
 
 // Route analyzes the RequestPayload and determines the optimal agent for execution.
 func (r *Router) Route(ctx context.Context, payload *trigger.RequestPayload) (*RouteResult, error) {
-	if payload == nil {
+	if r == nil || payload == nil {
 		return &RouteResult{
 			TargetAgent: AgentTypePersona,
 			Confidence:  1.0,
-			Reason:      "Default fallback for nil payload",
+			Reason:      "Default fallback for nil router or payload",
 		}, nil
 	}
 

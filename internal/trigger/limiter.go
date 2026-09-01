@@ -24,7 +24,7 @@ func NewChatLimiter(cooldownSeconds int) *ChatLimiter {
 
 // Allow checks if the cooldown period has elapsed for the given chatID and updates timestamp if allowed.
 func (l *ChatLimiter) Allow(chatID string) bool {
-	if l.cooldown <= 0 {
+	if l == nil || l.cooldown <= 0 {
 		return true
 	}
 
@@ -43,6 +43,9 @@ func (l *ChatLimiter) Allow(chatID string) bool {
 
 // GetChatLock returns the specific mutex for a chat to ensure orderly processing.
 func (l *ChatLimiter) GetChatLock(chatID string) *sync.Mutex {
+	if l == nil {
+		return &sync.Mutex{}
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

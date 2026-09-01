@@ -42,23 +42,23 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = os.Getenv("OPENROUTER_MODEL")
 		if modelChat == "" {
-			modelChat = "google/gemini-2.5-flash"
+			modelChat = "qwen/qwen3-235b-a22b-2507"
 		}
 	}
 
 	modelMath := os.Getenv("MODEL_MATH")
 	if modelMath == "" {
-		modelMath = "deepseek/deepseek-r1-distill-llama-70b"
+		modelMath = "nvidia/nemotron-3-super"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
-		modelVision = "google/gemini-2.5-flash"
+		modelVision = "google/gemma-4-31b"
 	}
 
 	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")
 	if modelSummarizer == "" {
-		modelSummarizer = "google/gemini-2.5-flash"
+		modelSummarizer = "deepseek/deepseek-v4-flash-0731"
 	}
 
 	modelWhisper := os.Getenv("MODEL_WHISPER")
@@ -87,7 +87,11 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cooldownSec := 3
-	if cdStr := os.Getenv("CHAT_COOLDOWN_SECONDS"); cdStr != "" {
+	cdStr := os.Getenv("COOLDOWN_SECONDS")
+	if cdStr == "" {
+		cdStr = os.Getenv("CHAT_COOLDOWN_SECONDS")
+	}
+	if cdStr != "" {
 		if v, err := strconv.Atoi(cdStr); err == nil && v >= 0 {
 			cooldownSec = v
 		}

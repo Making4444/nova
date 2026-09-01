@@ -117,6 +117,9 @@ func (r *Registry) Count() int {
 
 // List returns all tools accessible to the caller based on their admin status.
 func (r *Registry) List(isAdmin bool) []Tool {
+	if r == nil {
+		return nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -132,6 +135,9 @@ func (r *Registry) List(isAdmin bool) []Tool {
 
 // ToToolDefinitions returns standard JSON schema tool definitions for LLM tool calling.
 func (r *Registry) ToToolDefinitions(isAdmin bool) []ToolDefinition {
+	if r == nil {
+		return nil
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -154,6 +160,9 @@ func (r *Registry) ToToolDefinitions(isAdmin bool) []ToolDefinition {
 
 // Execute looks up a tool, enforces permissions, and executes it with context.
 func (r *Registry) Execute(ctx context.Context, name string, args json.RawMessage, execCtx ExecutionContext) (string, error) {
+	if r == nil {
+		return "", fmt.Errorf("tool registry is nil")
+	}
 	r.mu.RLock()
 	tool, exists := r.tools[name]
 	r.mu.RUnlock()

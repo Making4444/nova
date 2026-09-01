@@ -439,10 +439,14 @@ func (s *OpenRouterEpisodeSummarizer) SynthesizeLongTermKnowledge(ctx context.Co
 	req.Header.Set("X-Title", "Nova Long-Term Knowledge Synthesis")
 
 	resp, err := s.httpClient.Do(req)
-	if err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if err != nil {
 		return s.fallback.SynthesizeLongTermKnowledge(ctx, chatID, currentKnowledge, newEpisodes)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return s.fallback.SynthesizeLongTermKnowledge(ctx, chatID, currentKnowledge, newEpisodes)
+	}
 
 	respBytes, _ := io.ReadAll(resp.Body)
 	var orResp openRouterSummaryResponse

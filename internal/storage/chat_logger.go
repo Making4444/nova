@@ -54,10 +54,14 @@ func NewChatLogger(baseDir string) (*ChatLogger, error) {
 func sanitizeID(id string) string {
 	// Replace colons, slashes, backslashes for filesystem safety on Windows/Linux
 	replacer := strings.NewReplacer(":", "_", "/", "_", "\\", "_", "<", "_", ">", "_", "|", "_", "?", "_", "*", "_", "\"", "_")
-	return replacer.Replace(id)
+	clean := replacer.Replace(id)
+	return filepath.Base(clean)
 }
 
 func (l *ChatLogger) getFilePath(chatType, chatID string) string {
+	if l == nil {
+		return ""
+	}
 	folder := "private"
 	if strings.ToLower(chatType) == "group" || strings.Contains(chatID, "@g.us") {
 		folder = "groups"

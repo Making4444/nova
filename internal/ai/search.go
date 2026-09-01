@@ -39,6 +39,9 @@ type searchRequest struct {
 
 // Search executes a real-time web query via Perplexity on OpenRouter and returns the text results.
 func (s *SearchEngine) Search(ctx context.Context, query string) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("search engine is not initialized")
+	}
 	if strings.TrimSpace(query) == "" {
 		return "", fmt.Errorf("search query cannot be empty")
 	}
