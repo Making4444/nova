@@ -86,13 +86,13 @@ func (c *Client) Disconnect() {
 	}
 }
 
-// SendReply sends a reply message quoting the given message ID.
-func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText string, replyToID string, replyToSender string) (types.MessageID, error) {
+// SendReply sends a reply message quoting the given message ID and content.
+func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText string, replyToID string, replyToSender string, quotedText string) (types.MessageID, error) {
 	if c == nil || c.WAClient == nil {
 		return "", fmt.Errorf("whatsapp client not initialized")
 	}
 
-	msgProto := BuildReplyMessage(replyText, replyToID, replyToSender)
+	msgProto := BuildReplyMessage(replyText, replyToID, replyToSender, quotedText)
 
 	resp, err := c.WAClient.SendMessage(ctx, chatJID, msgProto)
 	if err != nil {

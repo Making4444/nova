@@ -18,6 +18,7 @@ func (c *Client) SendVoiceNote(
 	durationSec uint32,
 	replyToID string,
 	replyToSender string,
+	quotedText string,
 ) (types.MessageID, error) {
 	if c == nil || c.WAClient == nil {
 		return "", fmt.Errorf("whatsapp client not initialized")
@@ -49,6 +50,11 @@ func (c *Client) SendVoiceNote(
 		}
 		if replyToSender != "" {
 			ctxInfo.Participant = proto.String(replyToSender)
+		}
+		if quotedText != "" {
+			ctxInfo.QuotedMessage = &waE2E.Message{
+				Conversation: proto.String(quotedText),
+			}
 		}
 		audioMsg.ContextInfo = ctxInfo
 	}

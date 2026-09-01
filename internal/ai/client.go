@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	toolsPkg "novabot/internal/tools"
 	"novabot/internal/trigger"
 )
 
@@ -192,11 +193,65 @@ var scheduleFollowupTool = toolDefinition{
 	},
 }
 
+var getWeatherTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "get_weather",
+		Description: "معرفة حالة الطقس المباشرة، درجات الحرارة الحالية والمحسوسة، الرطوبة، سرعة الرياح، وتوقعات الأيام القادمة لأي مدينة أو محافظة في مصر والعالم (مثل: المنيا، القاهرة، الإسكندرية، أسيوط، الجيزة، الرياض، دبي)",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"location": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم المدينة أو المحافظة باللغة العربية أو الإنجليزية (مثلاً: المنيا أو Minya أو القاهرة)",
+				},
+			},
+			"required": []string{"location"},
+		},
+	},
+}
+
+var readWebPageTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "read_web_page",
+		Description: "استخراج وقراءة وتلخيص محتوى أي مقال أو صفحة ويب من الرابط (URL)",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"url": map[string]interface{}{
+					"type":        "string",
+					"description": "رابط صفحة الويب للوصول إليها واستخراج المقال منها",
+				},
+			},
+			"required": []string{"url"},
+		},
+	},
+}
+
+var calculatorTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "calculator",
+		Description: "إجراء العمليات الحسابية والنسب المئوية والعمليات الحسابية المباشرة بدقة متناهية",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"expression": map[string]interface{}{
+					"type":        "string",
+					"description": "التعبير الرياضي أو الحسابي (مثال: '1500 * 0.14' أو '2^8 + 50')",
+				},
+			},
+			"required": []string{"expression"},
+		},
+	},
+}
+
 var solveMathProblemTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
 		Name:        "solve_math_problem",
-		Description: "استدعاء نموذج الرياضيات الخارق GLM-5.2 لحل أي مسألة رياضية أو تفاضل وتكامل أو هندسة أو خوارزميات معقدة بدقة متناهية",
+		Description: "استدعاء نموذج الرياضيات والاستدلال الخارق لحل أي مسألة رياضية أو معادلة أو تفاضل وتكامل أو لوجيك وبرمجة بدقة متناهية",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -402,7 +457,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	copy(currentMessages, messages)
 	usedSearch := false
 
-	tools := []toolDefinition{webSearchTool, scheduleFollowupTool, solveMathProblemTool, updateUserMemoryTool}
+	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, updateUserMemoryTool}
 
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
@@ -442,6 +497,72 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					Role:       "tool",
 					ToolCallID: call.ID,
 					Content:    searchResult,
+				})
+
+			case "get_weather", "weather":
+				var args struct {
+					Location string `json:"location"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				loc := strings.TrimSpace(args.Location)
+				if loc == "" {
+					loc = call.Function.Arguments
+				}
+				fmt.Printf("\n[☀️ Weather Tool] Fetching live weather for: %q\n", loc)
+				weatherTool := toolsPkg.NewWeatherTool()
+				weatherRes, wErr := weatherTool.Execute(ctx, []byte(call.Function.Arguments), toolsPkg.ExecutionContext{})
+				toolResult := weatherRes
+				if wErr != nil {
+					toolResult = fmt.Sprintf("تعذر جلب بيانات الطقس: %v", wErr)
+				}
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    toolResult,
+				})
+
+			case "read_web_page", "web_reader":
+				var args struct {
+					URL string `json:"url"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				u := strings.TrimSpace(args.URL)
+				if u == "" {
+					u = call.Function.Arguments
+				}
+				fmt.Printf("\n[📄 Web Reader Tool] Reading URL: %q\n", u)
+				readerTool := toolsPkg.NewWebReaderTool()
+				readerRes, rErr := readerTool.Execute(ctx, []byte(call.Function.Arguments), toolsPkg.ExecutionContext{})
+				toolResult := readerRes
+				if rErr != nil {
+					toolResult = fmt.Sprintf("تعذر قراءة الصفحة: %v", rErr)
+				}
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    toolResult,
+				})
+
+			case "calculator":
+				var args struct {
+					Expression string `json:"expression"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				expr := strings.TrimSpace(args.Expression)
+				if expr == "" {
+					expr = call.Function.Arguments
+				}
+				fmt.Printf("\n[🧮 Calculator Tool] Evaluating expression: %q\n", expr)
+				calcTool := toolsPkg.NewCalculatorTool()
+				calcRes, cErr := calcTool.Execute(ctx, []byte(call.Function.Arguments), toolsPkg.ExecutionContext{})
+				toolResult := calcRes
+				if cErr != nil {
+					toolResult = fmt.Sprintf("تعذر حساب التعبير: %v", cErr)
+				}
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    toolResult,
 				})
 
 			case "solve_math_problem":

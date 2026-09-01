@@ -87,12 +87,15 @@ func TestExtractTextAndReply(t *testing.T) {
 }
 
 func TestBuildReplyMessage(t *testing.T) {
-	reply := BuildReplyMessage("رد نوفا", "MSG123", "user@s.whatsapp.net")
+	reply := BuildReplyMessage("رد نوفا", "MSG123", "user@s.whatsapp.net", "سؤال المستخدم")
 	if reply.GetExtendedTextMessage().GetText() != "\u200Fرد نوفا" {
 		t.Errorf("unexpected reply text: %q", reply.GetExtendedTextMessage().GetText())
 	}
 	if reply.GetExtendedTextMessage().GetContextInfo().GetStanzaID() != "MSG123" {
 		t.Errorf("unexpected stanza ID: %q", reply.GetExtendedTextMessage().GetContextInfo().GetStanzaID())
+	}
+	if reply.GetExtendedTextMessage().GetContextInfo().GetQuotedMessage().GetConversation() != "سؤال المستخدم" {
+		t.Errorf("unexpected quoted text: %q", reply.GetExtendedTextMessage().GetContextInfo().GetQuotedMessage().GetConversation())
 	}
 }
 

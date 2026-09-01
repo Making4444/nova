@@ -190,7 +190,7 @@ func (h *EventHandler) SendMessage(ctx context.Context, chatID string, text stri
 		return fmt.Errorf("invalid chat JID: %w", err)
 	}
 
-	sentID, err := h.waClient.SendReply(ctx, targetJID, text, replyToID, "")
+	sentID, err := h.waClient.SendReply(ctx, targetJID, text, replyToID, "", "")
 	if err != nil {
 		return err
 	}
@@ -480,7 +480,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	if (isVoiceIncoming || isVoiceRequested || aiWantsVoice) && h.ttsClient != nil {
 		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ctx, *aiResp.ReplyText)
 		if ttsErr == nil && len(oggBytes) > 0 {
-			sentMsgID, err = h.waClient.SendVoiceNote(ctx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String())
+			sentMsgID, err = h.waClient.SendVoiceNote(ctx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String(), text)
 			if err == nil {
 				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds)", durSec)
 			}
@@ -491,7 +491,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// If not sent as voice note, send regular text reply
 	if sentMsgID == "" {
-		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String())
+		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String(), text)
 	}
 
 	if err != nil {

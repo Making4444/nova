@@ -188,8 +188,8 @@ func EnsureRTLFormatting(text string) string {
 	return "\u200F" + text
 }
 
-// BuildReplyMessage creates a message proto quoting a target message ID and participant.
-func BuildReplyMessage(text string, replyToID string, replyToSender string) *waE2E.Message {
+// BuildReplyMessage creates a message proto quoting a target message ID, participant, and quoted content.
+func BuildReplyMessage(text string, replyToID string, replyToSender string, quotedText string) *waE2E.Message {
 	formattedText := EnsureRTLFormatting(text)
 	msg := &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
@@ -203,6 +203,11 @@ func BuildReplyMessage(text string, replyToID string, replyToSender string) *waE
 		}
 		if replyToSender != "" {
 			ctxInfo.Participant = proto.String(replyToSender)
+		}
+		if quotedText != "" {
+			ctxInfo.QuotedMessage = &waE2E.Message{
+				Conversation: proto.String(quotedText),
+			}
 		}
 		msg.ExtendedTextMessage.ContextInfo = ctxInfo
 	}
