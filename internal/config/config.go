@@ -35,12 +35,14 @@ func LoadConfig() (*Config, error) {
 	// Attempt to load .env file; do not fail if missing as env vars might be passed directly.
 	_ = godotenv.Load()
 
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	groqKey := os.Getenv("GROQ_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
+	apiKey = strings.Trim(apiKey, "\"'`")
+	groqKey := strings.TrimSpace(os.Getenv("GROQ_API_KEY"))
+	groqKey = strings.Trim(groqKey, "\"'`")
 
-	modelChat := os.Getenv("MODEL_CHAT")
+	modelChat := strings.TrimSpace(os.Getenv("MODEL_CHAT"))
 	if modelChat == "" {
-		modelChat = os.Getenv("OPENROUTER_MODEL")
+		modelChat = strings.TrimSpace(os.Getenv("OPENROUTER_MODEL"))
 		if modelChat == "" {
 			modelChat = "qwen/qwen3-235b-a22b-2507"
 		}
