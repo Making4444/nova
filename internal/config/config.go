@@ -44,7 +44,7 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = strings.TrimSpace(os.Getenv("OPENROUTER_MODEL"))
 		if modelChat == "" {
-			modelChat = "qwen/qwen3-235b-a22b-2507"
+			modelChat = "google/gemma-4-31b"
 		}
 	}
 
