@@ -365,15 +365,19 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	return parsedRetry, nil
 }
 
-// SolveMathDirectly invokes GLM-5.2 directly to solve mathematical questions.
+// SolveMathDirectly invokes the specialized math/reasoning model directly to solve mathematical questions.
 func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem string) (string, error) {
 	if c == nil {
 		return "", errors.New("OpenRouterClient is nil")
 	}
+	mathModel := c.modelMath
+	if mathModel == "" {
+		mathModel = "nvidia/nemotron-3-super"
+	}
 	messages := []openRouterMessage{
 		{
 			Role:    "system",
-			Content: "You are GLM-5.2, an expert mathematical, logical, and scientific reasoning engine. Solve the provided problem step-by-step with extreme accuracy, clarity, and precision. Provide complete mathematical derivations, answers, and concise explanations in Arabic.",
+			Content: "You are an expert mathematical, logical, and scientific reasoning engine. Solve the provided problem step-by-step with extreme accuracy, clarity, and precision. Provide complete mathematical derivations, answers, and concise explanations in Arabic.",
 		},
 		{
 			Role:    "user",
@@ -381,7 +385,7 @@ func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem st
 		},
 	}
 
-	choiceMsg, err := c.callAPI(ctx, c.modelMath, messages, nil)
+	choiceMsg, err := c.callAPI(ctx, mathModel, messages, nil)
 	if err != nil {
 		return "", err
 	}
@@ -445,7 +449,11 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					Problem string `json:"problem"`
 				}
 				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-				fmt.Printf("\n[🧮 Math Consultant] Consulting GLM-5.2 on problem: %q\n", args.Problem)
+				targetMathModel := c.modelMath
+				if targetMathModel == "" {
+					targetMathModel = "nvidia/nemotron-3-super"
+				}
+				fmt.Printf("\n[🧮 Math Consultant] Consulting %s on problem: %q\n", targetMathModel, args.Problem)
 
 				mathSolution, mathErr := c.SolveMathDirectly(ctx, args.Problem)
 				if mathErr != nil {

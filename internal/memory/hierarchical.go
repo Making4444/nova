@@ -233,7 +233,7 @@ type OpenRouterEpisodeSummarizer struct {
 // NewOpenRouterEpisodeSummarizer creates an LLM-backed episode summarizer.
 func NewOpenRouterEpisodeSummarizer(apiKey, model string) *OpenRouterEpisodeSummarizer {
 	if model == "" {
-		model = "google/gemini-3.7-flash"
+		model = "deepseek/deepseek-v4-flash-0731"
 	}
 	return &OpenRouterEpisodeSummarizer{
 		apiKey:     apiKey,
