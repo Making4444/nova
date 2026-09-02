@@ -57,7 +57,8 @@ func NormalizeForMatch(s string) string {
 	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(b.String(), " "))
 }
 
-// ContainsTrigger checks if the normalized copy contains "يا نوفا", "يانوفا", "نوفا", or tag mentions like "@nova", "@نوفا".
+// ContainsTrigger checks if the normalized copy contains "يا نوفا", "يانوفا", or tag mentions like "@nova", "@نوفا".
+// Standalone "نوفا" without "يا" or "@" is strictly excluded.
 func ContainsTrigger(text string) bool {
 	if strings.TrimSpace(text) == "" {
 		return false
@@ -75,14 +76,6 @@ func ContainsTrigger(text string) bool {
 	if strings.Contains(norm, "يا نوفا") || strings.Contains(norm, "يانوفا") ||
 		strings.Contains(norm, "يا نوفه") || strings.Contains(norm, "يانوفه") {
 		return true
-	}
-
-	// Check for standalone word "نوفا" or "نوفه" surrounded by boundaries or in short phrases
-	words := strings.Fields(norm)
-	for _, w := range words {
-		if w == "نوفا" || w == "نوفه" || w == "nova" {
-			return true
-		}
 	}
 
 	return false

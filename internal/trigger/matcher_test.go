@@ -38,7 +38,9 @@ func TestContainsTrigger(t *testing.T) {
 		{"With Punctuation", "يا نوفا!؟ شوفي كدة.", true},
 		{"With Alef variants", "إزيك يا نوفا", true},
 		{"Negative - normal sentence", "انا رايح الشغل دلوقتي", false},
-		{"Positive - nova without ya", "نوفا اسم حلو", true},
+		{"Negative - nova without ya", "نوفا اسم حلو", false},
+		{"Positive - at nova", "@nova ازيك", true},
+		{"Positive - at nova arabic", "@نوفا صباح الفل", true},
 		{"Negative - empty", "", false},
 	}
 
@@ -85,9 +87,9 @@ func TestCheckTriggerWithMentions(t *testing.T) {
 		t.Errorf("expected @نوفا to match trigger")
 	}
 
-	// 3. Standalone "نوفا"
-	if !CheckTriggerWithMentions("نوفا قوليلي رأيك في الموضوع ده", false, "", nil, botJID) {
-		t.Errorf("expected standalone 'نوفا' to match trigger")
+	// 3. Standalone "نوفا" without "يا" or "@" should be false
+	if CheckTriggerWithMentions("نوفا اسم كويس", false, "", nil, "") {
+		t.Errorf("expected standalone 'نوفا' without ya or @ to NOT match trigger")
 	}
 }
 
