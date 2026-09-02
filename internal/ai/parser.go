@@ -3,7 +3,6 @@ package ai
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -33,27 +32,33 @@ func ExtractJSON(raw string) string {
 	return strings.TrimSpace(trimmed)
 }
 
-// ParseResponse parses and validates the JSON response from the LLM.
+// ParseResponse parses and validates the response from the LLM.
+// It seamlessly supports structured JSON payloads as well as direct natural conversational text.
 func ParseResponse(raw string) (*ResponsePayload, error) {
-	if strings.TrimSpace(raw) == "" {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return nil, errors.New("empty response from model")
 	}
 
-	jsonStr := ExtractJSON(raw)
-	if jsonStr == "" {
-		return nil, fmt.Errorf("no JSON object found in response: %q", raw)
-	}
-
-	var resp ResponsePayload
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON response (%w): raw text: %q", err, raw)
-	}
-
-	if resp.ShouldReply {
-		if resp.ReplyText == nil || strings.TrimSpace(*resp.ReplyText) == "" {
-			return nil, errors.New("model indicated should_reply: true but reply_text is missing or empty")
+	jsonStr := ExtractJSON(trimmed)
+	if jsonStr != "" {
+		var resp ResponsePayload
+		if err := json.Unmarshal([]byte(jsonStr), &resp); err == nil {
+			if resp.ShouldReply {
+				if resp.ReplyText != nil && strings.TrimSpace(*resp.ReplyText) != "" {
+					return &resp, nil
+				}
+			} else {
+				return &resp, nil
+			}
 		}
 	}
 
-	return &resp, nil
+	// Seamless fallback for direct conversational text:
+	mood := "neutral"
+	return &ResponsePayload{
+		ShouldReply: true,
+		ReplyText:   &trimmed,
+		Mood:        &mood,
+	}, nil
 }

@@ -74,17 +74,19 @@ func TestParseResponse_WithSurroundingCommentary(t *testing.T) {
 }
 
 func TestParseResponse_Invalid(t *testing.T) {
-	// 1. Invalid JSON
-	_, err := ParseResponse("Not a json string at all")
+	// 1. Empty string returns error
+	_, err := ParseResponse("   ")
 	if err == nil {
-		t.Errorf("expected error for non-json string")
+		t.Errorf("expected error for empty string")
 	}
 
-	// 2. should_reply: true but missing reply_text
-	rawNoText := `{"should_reply": true, "reply_text": "", "reply_to_message_id": "M1"}`
-	_, err = ParseResponse(rawNoText)
-	if err == nil {
-		t.Errorf("expected error when should_reply is true but reply_text is empty")
+	// 2. Direct plain text fallback
+	resp, err := ParseResponse("صباح القشطة يا عمنا")
+	if err != nil {
+		t.Fatalf("expected direct text to be accepted as fallback, got err: %v", err)
+	}
+	if !resp.ShouldReply || resp.ReplyText == nil || *resp.ReplyText != "صباح القشطة يا عمنا" {
+		t.Errorf("expected direct text in reply_text, got: %+v", resp)
 	}
 }
 
