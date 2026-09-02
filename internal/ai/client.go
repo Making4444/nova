@@ -32,11 +32,12 @@ type UserMemoryUpdater interface {
 	AppendMemoryNote(userID, userName, note string) error
 }
 
-// OpenRouterClient interacts with OpenRouter API with multi-model routing (Chat, Math, Vision) and fast Groq classification.
+// OpenRouterClient interacts with OpenRouter API with multi-model routing (Chat, Math, Academic, Vision) and fast Groq classification.
 type OpenRouterClient struct {
 	apiKey              string
 	modelChat           string
 	modelMath           string
+	modelAcademic       string
 	modelVision         string
 	modelSummarizer     string
 	groqRouter          *GroqRouter
@@ -52,27 +53,31 @@ type OpenRouterClient struct {
 // NewMultiModelClient creates a new client supporting multi-model routing.
 func NewMultiModelClient(
 	apiKey string,
-	modelChat, modelMath, modelVision, modelSummarizer string,
+	modelChat, modelMath, modelAcademic, modelVision, modelSummarizer string,
 	groqRouter *GroqRouter,
 	systemPrompt string,
 ) *OpenRouterClient {
 	if modelChat == "" {
-		modelChat = "qwen/qwen3-235b-a22b-2507"
+		modelChat = "google/gemma-4-31b-it"
 	}
 	if modelMath == "" {
-		modelMath = "z-ai/glm-5.2"
+		modelMath = "nvidia/nemotron-3-super-120b-a12b"
+	}
+	if modelAcademic == "" {
+		modelAcademic = "google/gemini-3.7-flash"
 	}
 	if modelVision == "" {
-		modelVision = "openai/gpt-5.6-luna"
+		modelVision = "google/gemma-4-31b-it"
 	}
 	if modelSummarizer == "" {
-		modelSummarizer = "google/gemini-3.7-flash"
+		modelSummarizer = "deepseek/deepseek-v4-flash-0731"
 	}
 
 	return &OpenRouterClient{
 		apiKey:          apiKey,
 		modelChat:       modelChat,
 		modelMath:       modelMath,
+		modelAcademic:   modelAcademic,
 		modelVision:     modelVision,
 		modelSummarizer: modelSummarizer,
 		groqRouter:      groqRouter,
@@ -86,7 +91,7 @@ func NewMultiModelClient(
 
 // NewOpenRouterClient creates a backwards-compatible client.
 func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
-	return NewMultiModelClient(apiKey, model, "z-ai/glm-5.2", "openai/gpt-5.6-luna", "google/gemini-3.7-flash", nil, systemPrompt)
+	return NewMultiModelClient(apiKey, model, "nvidia/nemotron-3-super-120b-a12b", "google/gemini-3.7-flash", "google/gemma-4-31b-it", "deepseek/deepseek-v4-flash-0731", nil, systemPrompt)
 }
 
 // SetScheduler attaches a task scheduler instance to the AI client.
@@ -251,7 +256,7 @@ var solveMathProblemTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
 		Name:        "solve_math_problem",
-		Description: "استدعاء نموذج الرياضيات والاستدلال الخارق لحل أي مسألة رياضية أو معادلة أو تفاضل وتكامل أو لوجيك وبرمجة بدقة متناهية",
+		Description: "استدعاء نموذج الرياضيات والاستدلال الخارق (Nemotron Super) لحل أي مسألة رياضية أو معادلة أو تفاضل وتكامل أو هندسة أو لوجيك وبرمجة بدقة متناهية",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -261,6 +266,28 @@ var solveMathProblemTool = toolDefinition{
 				},
 			},
 			"required": []string{"problem"},
+		},
+	},
+}
+
+var consultCurriculumTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "consult_curriculum_expert",
+		Description: "استدعاء واستشارة خبير المناهج الدراسية والعلوم واللغات الشامل (Gemini 3.7 Flash) لحل وشرح وتفصيل أي أسئلة أو تدريبات أو امتحانات تخص المناهج والمواد الدراسية (فيزياء، كيمياء، أحياء، لغة عربية وقواعد ونحو وبلاغة، إنجليزي، لغات، تاريخ، جغرافيا، فلسفة وعلم نفس، مواد جامعية، إلخ) بدقة علمية وتربوية فائقة",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"subject": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم المادة أو الفرع الدراسي (مثلاً: لغة إنجليزية، كيمياء، نحو وبلاغة، فيزياء، أحياء، تاريخ، دراسات)",
+				},
+				"question": map[string]interface{}{
+					"type":        "string",
+					"description": "نص السؤال أو التدريب أو القاعدة أو القطعة الدراسية المطلوب حلها وشرحها بالتفصيل",
+				},
+			},
+			"required": []string{"subject", "question"},
 		},
 	},
 }
@@ -451,13 +478,45 @@ func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem st
 	return "", fmt.Errorf("invalid math response format")
 }
 
-// executeConversation executes the message list, handling tool calls (web_search, schedule_followup, solve_math_problem, update_user_memory).
+// SolveAcademicDirectly delegates academic, school/college curricula, science, language, and humanities questions directly to the high-IQ academic model.
+func (c *OpenRouterClient) SolveAcademicDirectly(ctx context.Context, subject, query string) (string, error) {
+	targetModel := c.modelAcademic
+	if targetModel == "" {
+		targetModel = "google/gemini-3.7-flash"
+	}
+
+	academicPrompt := fmt.Sprintf(`أنت خبير ومستشار المناهج الدراسية والعلوم واللغات الشامل عالي الذكاء (Academic & Curriculum Specialist).
+المادة/التخصص: %s
+المسألة أو السؤال:
+%s
+
+قم بحل وشرح السؤال بالتفصيل وبأعلى درجات الدقة الأكاديمية والتربوية، مع توضيح خطوات الإجابة والقواعد العلمية أو اللغوية بأسلوب مبسط ومنظم.`, subject, query)
+
+	messages := []openRouterMessage{
+		{
+			Role:    "user",
+			Content: academicPrompt,
+		},
+	}
+
+	choiceMsg, err := c.callAPICustom(ctx, targetModel, messages, nil, 3000)
+	if err != nil {
+		return "", err
+	}
+
+	if contentStr, ok := choiceMsg.Content.(string); ok {
+		return strings.TrimSpace(contentStr), nil
+	}
+	return "", fmt.Errorf("invalid academic response format")
+}
+
+// executeConversation executes the message list, handling tool calls (web_search, schedule_followup, solve_math_problem, consult_curriculum_expert, update_user_memory).
 func (c *OpenRouterClient) executeConversation(ctx context.Context, model string, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, error) {
 	currentMessages := make([]openRouterMessage, len(messages))
 	copy(currentMessages, messages)
 	usedSearch := false
 
-	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, updateUserMemoryTool}
+	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool}
 
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
@@ -585,6 +644,37 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					Role:       "tool",
 					ToolCallID: call.ID,
 					Content:    mathSolution,
+				})
+
+			case "consult_curriculum_expert", "curriculum_expert", "academic_solver":
+				var args struct {
+					Subject  string `json:"subject"`
+					Question string `json:"question"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				sub := strings.TrimSpace(args.Subject)
+				q := strings.TrimSpace(args.Question)
+				if q == "" {
+					q = call.Function.Arguments
+				}
+				if sub == "" {
+					sub = "مناهج دراسية عامة"
+				}
+				targetAcademicModel := c.modelAcademic
+				if targetAcademicModel == "" {
+					targetAcademicModel = "google/gemini-3.7-flash"
+				}
+				fmt.Printf("\n[🎓 Curriculum Consultant] Consulting %s on subject (%s): %q\n", targetAcademicModel, sub, q)
+
+				acadSolution, acadErr := c.SolveAcademicDirectly(ctx, sub, q)
+				if acadErr != nil {
+					acadSolution = fmt.Sprintf("فشل استشارة خبير المناهج: %v", acadErr)
+				}
+
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    acadSolution,
 				})
 
 			case "schedule_followup":

@@ -14,6 +14,7 @@ type Config struct {
 	OpenRouterAPIKey    string
 	ModelChat           string
 	ModelMath           string
+	ModelAcademic       string
 	ModelVision         string
 	GroqAPIKey          string
 	ModelWhisper        string
@@ -51,6 +52,11 @@ func LoadConfig() (*Config, error) {
 	modelMath := os.Getenv("MODEL_MATH")
 	if modelMath == "" {
 		modelMath = "nvidia/nemotron-3-super-120b-a12b"
+	}
+
+	modelAcademic := os.Getenv("MODEL_ACADEMIC")
+	if modelAcademic == "" {
+		modelAcademic = "google/gemini-3.7-flash"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
@@ -136,6 +142,7 @@ func LoadConfig() (*Config, error) {
 		OpenRouterAPIKey:    apiKey,
 		ModelChat:           modelChat,
 		ModelMath:           modelMath,
+		ModelAcademic:       modelAcademic,
 		ModelVision:         modelVision,
 		GroqAPIKey:          groqKey,
 		ModelWhisper:        modelWhisper,
