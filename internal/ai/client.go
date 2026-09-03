@@ -318,6 +318,24 @@ var updateUserMemoryTool = toolDefinition{
 	},
 }
 
+var sendVoiceNoteTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "send_voice_note",
+		Description: "إرسال الرد كرسالة صوتية (WhatsApp Voice Note) بصوتك البشري الواقعي ونبرتك المصرية الحية، عندما يطلب المستخدم نطق أو سماع كلام ('انطق'، 'قول ده'، 'اقرأ ده'، 'سمعني')، أو عندما تختار الرد بصوتك. يُسمح حصرياً هنا باستخدام وسوم التعبير الصوتي الحية مثل [laughs]، [chuckles]، [sighs]، [whispers]، [gasp]، [pause]",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"speech_text": map[string]interface{}{
+					"type":        "string",
+					"description": "النص الصوتي المراد تسجيله ونطقه بصوتك بالعامية المصرية شاملاً وسوم التعبير الصوتي الطبيعية",
+				},
+			},
+			"required": []string{"speech_text"},
+		},
+	},
+}
+
 type openRouterRequest struct {
 	Model     string              `json:"model"`
 	Messages  []openRouterMessage `json:"messages"`
@@ -516,7 +534,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	copy(currentMessages, messages)
 	usedSearch := false
 
-	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool}
+	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool}
 
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
@@ -736,6 +754,24 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					ToolCallID: call.ID,
 					Content:    toolResult,
 				})
+
+			case "send_voice_note", "voice_note":
+				var args struct {
+					SpeechText string `json:"speech_text"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				speechText := strings.TrimSpace(args.SpeechText)
+				if speechText == "" {
+					speechText = call.Function.Arguments
+				}
+				fmt.Printf("\n[🎙️ Voice Note Tool] AI executed send_voice_note: %q\n", speechText)
+				voicePayload := map[string]interface{}{
+					"should_reply":  true,
+					"reply_text":    speechText,
+					"send_as_voice": true,
+				}
+				vBytes, _ := json.Marshal(voicePayload)
+				return string(vBytes), usedSearch, nil
 			}
 		}
 	}

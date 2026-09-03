@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -487,9 +488,10 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// If not sent as voice note, send regular text reply
+	// If not sent as voice note, send regular text reply (cleaning any audio tags so they never appear in text chat!)
 	if sentMsgID == "" {
-		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, *aiResp.ReplyText, targetMsgID, evt.Info.Sender.String(), text)
+		cleanReplyText := StripAudioTags(*aiResp.ReplyText)
+		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, cleanReplyText, targetMsgID, evt.Info.Sender.String(), text)
 	}
 
 	if err != nil {
@@ -570,4 +572,13 @@ func IsVoiceRequested(text string) bool {
 	}
 
 	return false
+}
+
+var audioTagsRegex = regexp.MustCompile(`\[(laughs|chuckles|sighs|whispers|gasp|pause|excited|cough|slow|rushed|clears throat)\]`)
+
+// StripAudioTags removes internal speech synthesis tags like [laughs], [chuckles], [sighs] so they never appear in plain text chat.
+func StripAudioTags(s string) string {
+	clean := audioTagsRegex.ReplaceAllString(s, "")
+	clean = strings.ReplaceAll(clean, "  ", " ")
+	return strings.TrimSpace(clean)
 }
