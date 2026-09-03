@@ -139,3 +139,38 @@ func TestExtractDownloadableMedia(t *testing.T) {
 		t.Errorf("expected nil downloadable for plain message")
 	}
 }
+
+func TestIsVoiceRequested(t *testing.T) {
+	positiveCases := []string{
+		"انطق الكلام دا",
+		"قول الكلام ده",
+		"اقرأ الجملة دي",
+		"سمعني صوتك",
+		"ابعت فويس",
+		"قول دي بصوتك",
+		"انطق ده",
+		"سجل ريكورد",
+		"عايز اسمع صوتك",
+		"اقرالي القطعة دي",
+		"قولهالي",
+	}
+
+	for _, text := range positiveCases {
+		if !IsVoiceRequested(text) {
+			t.Errorf("expected IsVoiceRequested(%q) = true, got false", text)
+		}
+	}
+
+	negativeCases := []string{
+		"سلام عليكم يا صاحبي",
+		"إيه رأيك في البرمجة؟",
+		"حل المسألة دي كدة",
+		"نوفا أنا جعان",
+	}
+
+	for _, text := range negativeCases {
+		if IsVoiceRequested(text) {
+			t.Errorf("expected IsVoiceRequested(%q) = false, got true", text)
+		}
+	}
+}

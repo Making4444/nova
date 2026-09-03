@@ -466,9 +466,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
-	isVoiceRequested := strings.Contains(cleanText, "فويس") || strings.Contains(cleanText, "صوتك") ||
-		strings.Contains(cleanText, "ريكورد") || strings.Contains(cleanText, "صوتي") ||
-		strings.Contains(cleanText, "بصوتك") || strings.Contains(cleanText, "اتكلم")
+	isVoiceRequested := IsVoiceRequested(cleanText)
 	aiWantsVoice := (aiResp.SendAsVoice != nil && *aiResp.SendAsVoice)
 
 	if h.waClient == nil {
@@ -535,4 +533,41 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 			_ = h.memoryEngine.SaveMemory(chatID, senderID, senderName, note, nil)
 		}
 	}
+}
+
+// IsVoiceRequested detects whether the user's message is asking for a voice note, pronunciation, or speaking.
+func IsVoiceRequested(text string) bool {
+	if strings.TrimSpace(text) == "" {
+		return false
+	}
+
+	lower := strings.ToLower(text)
+	normalized := trigger.NormalizeForMatch(text)
+
+	// Explicit keywords
+	voiceKeywords := []string{
+		"فويس", "ريكورد", "صوتك", "بصوتك", "صوتي", "اتكلم", "تكلم", "تسجيل",
+		"voice", "audio", "speech", "pronounce", "record",
+	}
+	for _, kw := range voiceKeywords {
+		if strings.Contains(lower, kw) || strings.Contains(normalized, kw) {
+			return true
+		}
+	}
+
+	// Pronunciation / reading / speaking intent keywords in Egyptian & Arabic
+	speechIntents := []string{
+		"انطق", "انطقلي", "انطقها", "انطق ده", "انطق دا", "انطق دي", "انطق الكلام",
+		"قول الكلام", "قول الجمله", "قولهالي", "قولها", "قول دا", "قول ده", "قول دي",
+		"اقرا الكلام", "اقرا الجمله", "اقرالي", "اقراها", "اقرا ده", "اقرا دا", "اقرأ",
+		"سمعني", "سمعنا", "اسمع صوتك", "عايز اسمع", "حابب اسمع", "خليني اسمع",
+	}
+	for _, intent := range speechIntents {
+		normIntent := trigger.NormalizeForMatch(intent)
+		if strings.Contains(normalized, normIntent) || strings.Contains(text, intent) {
+			return true
+		}
+	}
+
+	return false
 }
