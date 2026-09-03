@@ -45,7 +45,7 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = strings.TrimSpace(os.Getenv("OPENROUTER_MODEL"))
 		if modelChat == "" {
-			modelChat = "google/gemma-4-31b-it"
+			modelChat = "openai/gpt-5.6-luna"
 		}
 	}
 
@@ -56,12 +56,12 @@ func LoadConfig() (*Config, error) {
 
 	modelAcademic := os.Getenv("MODEL_ACADEMIC")
 	if modelAcademic == "" {
-		modelAcademic = "google/gemini-3.7-flash"
+		modelAcademic = "google/gemini-3.8-flash"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
-		modelVision = "google/gemma-4-31b-it"
+		modelVision = "google/gemini-3.8-flash"
 	}
 
 	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")
@@ -118,12 +118,12 @@ func LoadConfig() (*Config, error) {
 	// TTS Configuration (OpenRouter Audio / Speech)
 	ttsModel := os.Getenv("TTS_MODEL")
 	if ttsModel == "" {
-		ttsModel = "openai/gpt-audio-mini"
+		ttsModel = "google/gemini-3.1-flash-tts-preview"
 	}
 
 	ttsVoice := os.Getenv("TTS_VOICE")
 	if ttsVoice == "" {
-		ttsVoice = "onyx" // Male voice for Nova (onyx / echo / alloy)
+		ttsVoice = "Puck" // High-expressiveness male voice for Nova
 	}
 
 	dashboardPort := 8080

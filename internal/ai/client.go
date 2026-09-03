@@ -58,16 +58,16 @@ func NewMultiModelClient(
 	systemPrompt string,
 ) *OpenRouterClient {
 	if modelChat == "" {
-		modelChat = "google/gemma-4-31b-it"
+		modelChat = "openai/gpt-5.6-luna"
 	}
 	if modelMath == "" {
 		modelMath = "nvidia/nemotron-3-super-120b-a12b"
 	}
 	if modelAcademic == "" {
-		modelAcademic = "google/gemini-3.7-flash"
+		modelAcademic = "google/gemini-3.8-flash"
 	}
 	if modelVision == "" {
-		modelVision = "google/gemma-4-31b-it"
+		modelVision = "google/gemini-3.8-flash"
 	}
 	if modelSummarizer == "" {
 		modelSummarizer = "deepseek/deepseek-v4-flash-0731"
@@ -274,7 +274,7 @@ var consultCurriculumTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
 		Name:        "consult_curriculum_expert",
-		Description: "استدعاء واستشارة خبير المناهج الدراسية والعلوم واللغات الشامل (Gemini 3.7 Flash) لحل وشرح وتفصيل أي أسئلة أو تدريبات أو امتحانات تخص المناهج والمواد الدراسية (فيزياء، كيمياء، أحياء، لغة عربية وقواعد ونحو وبلاغة، إنجليزي، لغات، تاريخ، جغرافيا، فلسفة وعلم نفس، مواد جامعية، إلخ) بدقة علمية وتربوية فائقة",
+		Description: "استدعاء واستشارة خبير المناهج الدراسية والعلوم واللغات الشامل (Gemini 3.8 Flash) لحل وشرح وتفصيل أي أسئلة أو تدريبات أو امتحانات تخص المناهج والمواد الدراسية (فيزياء، كيمياء، أحياء، لغة عربية وقواعد ونحو وبلاغة، إنجليزي، لغات، تاريخ، جغرافيا، فلسفة وعلم نفس، مواد جامعية، إلخ) بدقة علمية وتربوية فائقة",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
