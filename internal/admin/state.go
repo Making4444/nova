@@ -15,6 +15,7 @@ type State struct {
 	IsShutdown          bool            `json:"is_shutdown"`
 	ChatLimits          map[string]int  `json:"chat_limits"`           // chatID -> history limit (0 = all)
 	AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"` // chatID -> bool
+	ActivePersona       int             `json:"active_persona"`        // 1 = Bro/Default, 2 = Charming/Female
 	AdminNumber         string          `json:"admin_number"`          // e.g. "201202172699"
 	StartTime           time.Time       `json:"start_time"`
 	filePath            string
@@ -32,6 +33,7 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 		IsShutdown:          false,
 		ChatLimits:          make(map[string]int),
 		AutoTriggersEnabled: make(map[string]bool),
+		ActivePersona:       1,
 		AdminNumber:         adminNumber,
 		StartTime:           time.Now(),
 		filePath:            settingsPath,
@@ -43,6 +45,7 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 			IsShutdown          bool            `json:"is_shutdown"`
 			ChatLimits          map[string]int  `json:"chat_limits"`
 			AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"`
+			ActivePersona       int             `json:"active_persona"`
 		}
 		if err := json.Unmarshal(data, &loaded); err == nil {
 			st.IsShutdown = loaded.IsShutdown
@@ -51,6 +54,9 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 			}
 			if loaded.AutoTriggersEnabled != nil {
 				st.AutoTriggersEnabled = loaded.AutoTriggersEnabled
+			}
+			if loaded.ActivePersona >= 1 && loaded.ActivePersona <= 2 {
+				st.ActivePersona = loaded.ActivePersona
 			}
 		}
 	}
@@ -86,6 +92,33 @@ func (s *State) GetAdminNumber() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.AdminNumber
+}
+
+// SetPersona sets active persona mode (1 = Bro/Default, 2 = Charming/Female) thread-safely.
+func (s *State) SetPersona(mode int) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if mode < 1 || mode > 2 {
+		mode = 1
+	}
+	s.ActivePersona = mode
+	return s.save()
+}
+
+// GetPersona returns current active persona mode (1 or 2) thread-safely.
+func (s *State) GetPersona() int {
+	if s == nil {
+		return 1
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.ActivePersona < 1 || s.ActivePersona > 2 {
+		return 1
+	}
+	return s.ActivePersona
 }
 
 // IsAdmin checks if sender JID/Phone matches the admin number or if the message is from the owner.

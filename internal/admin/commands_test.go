@@ -15,8 +15,14 @@ func (d *dummyStats) GetScheduledTasksCount() int { return 2 }
 func (d *dummyStats) GetModelName() string        { return "qwen/qwen3-235b-a22b-2507" }
 
 type dummyArchiver struct {
-	archivedCalled bool
-	restoreIndex   int
+	archivedCalled  bool
+	restoreIndex    int
+	personaSwitched int
+}
+
+func (d *dummyArchiver) SwitchPersona(mode int) (string, error) {
+	d.personaSwitched = mode
+	return "ok", nil
 }
 
 func (d *dummyArchiver) ArchiveChatSession(ctx context.Context, chatType, chatID string) (string, int, error) {
@@ -128,6 +134,24 @@ func TestAdminCommands(t *testing.T) {
 	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "\u200e/status", stats, archiver)
 	if !res.Handled || !strings.Contains(res.ReplyText, "Nova Status") {
 		t.Errorf("expected status output, got: %s", res.ReplyText)
+	}
+
+	// 9. /persona info test
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona", stats, archiver)
+	if !res.Handled || !strings.Contains(res.ReplyText, "أنماط شخصية نوفا") {
+		t.Errorf("expected persona help text, got: %s", res.ReplyText)
+	}
+
+	// 10. /persona 2 switch test (Charming/Female)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 2", stats, archiver)
+	if !res.Handled || state.GetPersona() != 2 || archiver.personaSwitched != 2 || !strings.Contains(res.ReplyText, "النمط 2") {
+		t.Errorf("expected switch to persona 2, got: %s", res.ReplyText)
+	}
+
+	// 11. /persona 1 switch back test (Bro/Default)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 1", stats, archiver)
+	if !res.Handled || state.GetPersona() != 1 || archiver.personaSwitched != 1 || !strings.Contains(res.ReplyText, "النمط 1") {
+		t.Errorf("expected switch to persona 1, got: %s", res.ReplyText)
 	}
 }
 

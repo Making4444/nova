@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -159,6 +160,14 @@ func main() {
 	}
 
 	// 3. Initialize Groq Fast Router & Multi-Model AI Client
+	initialPrompt := cfg.SystemPrompt
+	if adminState != nil && adminState.GetPersona() == 2 {
+		if femalePrompt, fErr := os.ReadFile("config/system_prompt_female.md"); fErr == nil {
+			initialPrompt = strings.TrimSpace(string(femalePrompt))
+			logger.Infof("Loaded active Persona 2 (Charming/Female) from config/system_prompt_female.md")
+		}
+	}
+
 	groqRouter := ai.NewGroqRouter(cfg.GroqAPIKey, cfg.ModelRouterGroq)
 	aiClient := ai.NewMultiModelClient(
 		cfg.OpenRouterAPIKey,
@@ -168,7 +177,7 @@ func main() {
 		cfg.ModelVision,
 		cfg.ModelSummarizer,
 		groqRouter,
-		cfg.SystemPrompt,
+		initialPrompt,
 	)
 	aiClient.SetMemoryUpdater(memStore)
 

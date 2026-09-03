@@ -42,6 +42,11 @@ type ChatArchiver interface {
 	ListChatArchives(chatType, chatID string) ([]string, error)
 }
 
+// PersonaSwitcher interface allows switching active bot persona dynamically.
+type PersonaSwitcher interface {
+	SwitchPersona(mode int) (string, error)
+}
+
 // HandleAdminCommand parses and executes admin and archive commands.
 func HandleAdminCommand(
 	state *State,
@@ -305,6 +310,63 @@ func HandleAdminCommand(
 		return CommandResult{
 			Handled:   true,
 			ReplyText: fmt.Sprintf("✅ *تم بنجاح استرجاع المحادثة المؤرشفة رقم %d وتفعيلها كشات نشط!*", idx),
+		}
+
+	case "persona", "mode", "شخصية", "شخصيه", "نمط":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+
+		currentPersona := 1
+		if state != nil {
+			currentPersona = state.GetPersona()
+		}
+
+		if len(parts) < 2 {
+			currentName := "النمط 1 (الشباب والقهوة ☕)"
+			if currentPersona == 2 {
+				currentName = "النمط 2 (الجنتلمان مع البنات 🌸)"
+			}
+			helpMsg := fmt.Sprintf("🎭 *أنماط شخصية نوفا:*\n\n"+
+				"1️⃣ *النمط 1 (الشباب والقهوة ☕):*\nالصاحب القاهري الجدع، تريقة ودية، قفشات سريعة، ونقاشات صريحة.\n\n"+
+				"2️⃣ *النمط 2 (الجنتلمان والكاريزما مع البنات 🌸):*\nالذوق العالي، الاحتواء العاطفي، مناداة الاسم والدلع بذكاء، ونبرة دافئة ومهذبة.\n\n"+
+				"📌 *النمط المفعّل حالياً:* *%s*\n\n"+
+				"💡 *للتبديل اكتب:*\n• `/persona 1` (لتفعيل نمط الشباب)\n• `/persona 2` (لتفعيل نمط البنات)", currentName)
+			return CommandResult{Handled: true, ReplyText: helpMsg}
+		}
+
+		targetMode := 1
+		sub := strings.ToLower(parts[1])
+		switch sub {
+		case "1", "bro", "شباب", "ولاد", "ولد", "قهوة", "قهوه":
+			targetMode = 1
+		case "2", "girl", "girls", "بنات", "بنت", "جنتلمان", "دلع":
+			targetMode = 2
+		default:
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "⚠️ نمط غير معروف! اكتب:\n• `/persona 1` (لنمط الشباب)\n• `/persona 2` (لنمط البنات)",
+			}
+		}
+
+		if state != nil {
+			_ = state.SetPersona(targetMode)
+		}
+
+		if switcher, ok := archiver.(PersonaSwitcher); ok {
+			_, _ = switcher.SwitchPersona(targetMode)
+		}
+
+		if targetMode == 1 {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "☕ *تم التبديل إلى النمط 1 (الصاحب القاهري الجدع - نمط الشباب)!*\nالأسلوب المفعّل الآن: روح القهوة، الجدعنة، التريقة الودية، وإفيهات الصحاب.",
+			}
+		}
+
+		return CommandResult{
+			Handled:   true,
+			ReplyText: "🌸 *تم التبديل إلى النمط 2 (الجنتلمان الكاريزما - نمط التعامل الراقي مع البنات)!*\nالأسلوب المفعّل الآن: الذوق العالي، الاحتواء العاطفي، إدارة الأسماء والدلع بذكاء، والنبرة الدافئة.",
 		}
 
 	case "status", "statue", "stats", "حالة", "تقرير":

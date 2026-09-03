@@ -108,6 +108,26 @@ func (c *OpenRouterClient) SetMemoryUpdater(updater UserMemoryUpdater) {
 	c.memoryUpdater = updater
 }
 
+// SetSystemPrompt updates the system prompt dynamically at runtime.
+func (c *OpenRouterClient) SetSystemPrompt(prompt string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.systemPrompt = prompt
+}
+
+// GetSystemPrompt retrieves the current active system prompt thread-safely.
+func (c *OpenRouterClient) GetSystemPrompt() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.systemPrompt
+}
+
 // SetGroqRouter attaches the fast query classifier router.
 func (c *OpenRouterClient) SetGroqRouter(router *GroqRouter) {
 	c.mu.Lock()
@@ -412,7 +432,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	messages := []openRouterMessage{
-		{Role: "system", Content: c.systemPrompt},
+		{Role: "system", Content: c.GetSystemPrompt()},
 		{Role: "user", Content: userContent},
 	}
 

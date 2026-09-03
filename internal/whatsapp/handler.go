@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -155,6 +156,39 @@ func (h *EventHandler) ListChatArchives(chatType, chatID string) ([]string, erro
 		res = append(res, fmt.Sprintf("رقم %d — %d رسالة (%s)", a.Index, a.MessagesCount, a.ModTime.Format("2006-01-02 15:04")))
 	}
 	return res, nil
+}
+
+// SwitchPersona dynamically switches the active persona system prompt between mode 1 (Bro) and mode 2 (Charming/Female).
+func (h *EventHandler) SwitchPersona(mode int) (string, error) {
+	if mode < 1 || mode > 2 {
+		mode = 1
+	}
+
+	promptPath := "config/system_prompt.md"
+	personaName := "النمط 1 (الشباب)"
+	if mode == 2 {
+		promptPath = "config/system_prompt_female.md"
+		personaName = "النمط 2 (البنات)"
+	}
+
+	data, err := os.ReadFile(promptPath)
+	if err != nil {
+		h.logger.Errorf("Failed to read persona file %s: %v", promptPath, err)
+		return "", fmt.Errorf("تعذر قراءة ملف البرومبت %s: %w", promptPath, err)
+	}
+
+	newPrompt := strings.TrimSpace(string(data))
+	if h.aiClient != nil {
+		h.aiClient.SetSystemPrompt(newPrompt)
+	}
+
+	if h.adminState != nil {
+		_ = h.adminState.SetPersona(mode)
+	}
+
+	h.logger.Infof("Successfully switched active persona to %s (%s)", personaName, promptPath)
+	fmt.Printf("\n[🎭 Persona Switched] Successfully loaded persona %s from %s\n", personaName, promptPath)
+	return personaName, nil
 }
 
 func (h *EventHandler) markAsNovaSent(msgID string) {
