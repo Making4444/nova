@@ -125,4 +125,18 @@ func TestCurriculumService(t *testing.T) {
 	if !strings.Contains(lesson2Content, "الأعداد المركبة") {
 		t.Errorf("unexpected ReadLesson 2 content:\n%s", lesson2Content)
 	}
+
+	// 5. Test FindSubjectFolders ranking for sociology / Part 2
+	p1Dir := filepath.Join(tempDir, "الصف_الثاني_الثانوي", "علم النفس - كتاب الطالب - الجزء الأول")
+	p2Dir := filepath.Join(tempDir, "الصف_الثاني_الثانوي", "علم النفس - كتاب الطالب - الجزء الثاني")
+	_ = os.MkdirAll(p1Dir, 0755)
+	_ = os.MkdirAll(p2Dir, 0755)
+
+	socFolders, sErr := svc.FindSubjectFolders("الصف_الثاني_الثانوي", "علم الاجتماع")
+	if sErr != nil {
+		t.Fatalf("FindSubjectFolders for sociology failed: %v", sErr)
+	}
+	if len(socFolders) == 0 || !strings.Contains(socFolders[0], "الجزء الثاني") {
+		t.Errorf("expected Part 2 to rank first for sociology, got: %v", socFolders)
+	}
 }

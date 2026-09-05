@@ -16,9 +16,10 @@ const groqChatCompletionsURL = "https://api.groq.com/openai/v1/chat/completions"
 type QueryCategory string
 
 const (
-	CategoryChat   QueryCategory = "chat"
-	CategoryMath   QueryCategory = "math"
-	CategoryVision QueryCategory = "vision"
+	CategoryChat     QueryCategory = "chat"
+	CategoryMath     QueryCategory = "math"
+	CategoryAcademic QueryCategory = "academic"
+	CategoryVision   QueryCategory = "vision"
 )
 
 // GroqRouter fast-classifies text queries to pick the optimal model.
@@ -60,7 +61,7 @@ func (r *GroqRouter) ClassifyQuery(ctx context.Context, text string) QueryCatego
 		Messages: []openRouterMessage{
 			{
 				Role:    "system",
-				Content: "You are a fast binary query classifier for an AI assistant. Analyze the user message and determine if it requires advanced mathematical solving, calculus, algebraic equations, geometry, arithmetic calculations, or complex physics/logic puzzles ('math'), or if it is normal conversation, general question, greeting, joke, roleplay, search query, or advice ('chat'). Respond with ONLY one word: 'math' or 'chat'.",
+				Content: "You are a fast query classifier for an AI assistant. Analyze the user message and determine its category:\n- 'math': advanced mathematical calculations, algebra, calculus, geometry, arithmetic, logic puzzles.\n- 'academic': questions about school/university curricula, Egyptian secondary school (ثانوي), subjects like psychology, sociology (علم نفس / اجتماع), history, biology, chemistry, physics, integrated science (علوم متكاملة), Arabic grammar/rules (نحو/بلاغة), English/French lessons, textbook exercises.\n- 'chat': normal conversation, greetings, humor, advice, personal chat, general queries.\nRespond with ONLY one word: 'math', 'academic', or 'chat'.",
 			},
 			{
 				Role:    "user",
@@ -105,6 +106,9 @@ func (r *GroqRouter) ClassifyQuery(ctx context.Context, text string) QueryCatego
 		if strings.Contains(clean, "math") {
 			return CategoryMath
 		}
+		if strings.Contains(clean, "academic") {
+			return CategoryAcademic
+		}
 	}
 
 	return CategoryChat
@@ -123,5 +127,17 @@ func fallbackClassify(text string) QueryCategory {
 			return CategoryMath
 		}
 	}
+
+	academicKeywords := []string{
+		"ثانوي", "أولى ثانوي", "تانية ثانوي", "منهج", "كتاب الوزارة", "علم النفس", "علم الاجتماع",
+		"البناء الاجتماعي", "العلوم المتكاملة", "تاريخ مصر", "فلسفة ومنطق", "نحو", "اعراب", "إعراب",
+		"بلاغة", "قصة واسلاماه", "عنترة", "المنهج الجديد", "مادة",
+	}
+	for _, kw := range academicKeywords {
+		if strings.Contains(lower, kw) {
+			return CategoryAcademic
+		}
+	}
+
 	return CategoryChat
 }

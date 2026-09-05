@@ -20,7 +20,7 @@ import (
 const (
 	openRouterAPIURL = "https://openrouter.ai/api/v1/chat/completions"
 	maxFailures      = 3
-	maxToolSteps     = 4
+	maxToolSteps     = 10
 )
 
 // TaskScheduler represents an engine that can schedule future autonomous messages.
@@ -461,6 +461,9 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		if category == CategoryMath {
 			selectedModel = c.modelMath
 			fmt.Printf("\n[🧠 Smart Router] Math problem detected by Groq -> Routed to Math Specialist: %s\n", selectedModel)
+		} else if category == CategoryAcademic {
+			selectedModel = c.modelAcademic
+			fmt.Printf("\n[🧠 Smart Router] Academic & Curriculum query detected -> Routed to Academic Specialist: %s\n", selectedModel)
 		} else {
 			selectedModel = c.modelChat
 			fmt.Printf("\n[🧠 Smart Router] Conversational query -> Routed to Main Chat Model: %s\n", selectedModel)
@@ -969,6 +972,18 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 				vBytes, _ := json.Marshal(voicePayload)
 				return string(vBytes), usedSearch, nil
 			}
+		}
+	}
+
+	// Graceful fallback: ask model for final synthesis without tools if step limit reached
+	currentMessages = append(currentMessages, openRouterMessage{
+		Role:    "user",
+		Content: "يرجى كتابة ردك النهائي بالعامية المصرية والرد على المستخدم مباشرة بناءً على نتائج الأدوات والمعلومات التي جمعتها أعلاه، بدون استدعاء أي أدوات إضافية.",
+	})
+	finalChoice, finalErr := c.callAPI(ctx, model, currentMessages, nil)
+	if finalErr == nil {
+		if contentStr, ok := finalChoice.Content.(string); ok && strings.TrimSpace(contentStr) != "" {
+			return strings.TrimSpace(contentStr), usedSearch, nil
 		}
 	}
 
