@@ -509,11 +509,20 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
+	replyLen := len([]rune(*aiResp.ReplyText))
+	// Don't auto-generate voice note if text is a massive study explanation (> 500 characters) unless explicitly requested
+	shouldSendVoice := (isVoiceRequested || (aiWantsVoice && replyLen <= 500) || (isVoiceIncoming && replyLen <= 300))
+
 	var sentMsgID types.MessageID
-	if (isVoiceIncoming || isVoiceRequested || aiWantsVoice) && h.ttsClient != nil {
-		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ctx, *aiResp.ReplyText)
+	if shouldSendVoice && h.ttsClient != nil {
+		ttsCtx, ttsCancel := context.WithTimeout(context.Background(), 25*time.Second)
+		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ttsCtx, *aiResp.ReplyText)
+		ttsCancel()
+
 		if ttsErr == nil && len(oggBytes) > 0 {
-			sentMsgID, err = h.waClient.SendVoiceNote(ctx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String(), text)
+			sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			sentMsgID, err = h.waClient.SendVoiceNote(sendCtx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String(), text)
+			sendCancel()
 			if err == nil {
 				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds)", durSec)
 			}
@@ -525,7 +534,9 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	// If not sent as voice note, send regular text reply (cleaning any audio tags so they never appear in text chat!)
 	if sentMsgID == "" {
 		cleanReplyText := StripAudioTags(*aiResp.ReplyText)
-		sentMsgID, err = h.waClient.SendReply(ctx, evt.Info.Chat, cleanReplyText, targetMsgID, evt.Info.Sender.String(), text)
+		replyCtx, replyCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		sentMsgID, err = h.waClient.SendReply(replyCtx, evt.Info.Chat, cleanReplyText, targetMsgID, evt.Info.Sender.String(), text)
+		replyCancel()
 	}
 
 	if err != nil {
