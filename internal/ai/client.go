@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"novabot/internal/curriculum"
 	toolsPkg "novabot/internal/tools"
 	"novabot/internal/trigger"
 )
@@ -45,6 +46,7 @@ type OpenRouterClient struct {
 	searchEngine        *SearchEngine
 	scheduler           TaskScheduler
 	memoryUpdater       UserMemoryUpdater
+	curriculumSvc       *curriculum.Service
 	httpClient          *http.Client
 	mu                  sync.Mutex
 	consecutiveFailures int
@@ -83,6 +85,7 @@ func NewMultiModelClient(
 		groqRouter:      groqRouter,
 		systemPrompt:    systemPrompt,
 		searchEngine:    NewSearchEngine(apiKey, "perplexity/sonar"),
+		curriculumSvc:   curriculum.NewService("data/curriculum", "config/curriculum"),
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -92,6 +95,13 @@ func NewMultiModelClient(
 // NewOpenRouterClient creates a backwards-compatible client.
 func NewOpenRouterClient(apiKey, model, systemPrompt string) *OpenRouterClient {
 	return NewMultiModelClient(apiKey, model, "nvidia/nemotron-3-super-120b-a12b", "google/gemini-3.7-flash", "google/gemma-4-31b-it", "deepseek/deepseek-v4-flash-0731", nil, systemPrompt)
+}
+
+// SetCurriculumService attaches a custom curriculum service.
+func (c *OpenRouterClient) SetCurriculumService(svc *curriculum.Service) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.curriculumSvc = svc
 }
 
 // SetScheduler attaches a task scheduler instance to the AI client.
@@ -356,6 +366,58 @@ var sendVoiceNoteTool = toolDefinition{
 	},
 }
 
+var browseCurriculumIndexTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "browse_curriculum_index",
+		Description: "تصفح واستعراض فهرس دروس ووحدات المناهج الدراسية المصرية الرسمية 2026 (الصف الأول الثانوي أو الصف الثاني الثانوي) لمادة معينة، لمعرفة أسماء الدروس وملخصاتها وأسماء ملفات الـ PDF المتوفرة على السيرفر لكل درس",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"grade": map[string]interface{}{
+					"type":        "string",
+					"description": "الصف الدراسي (مثلاً: 'الصف الأول الثانوي' أو 'الصف الثاني الثانوي')",
+				},
+				"subject": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم المادة أو الفرع (مثلاً: الرياضيات، التاريخ، علم النفس، الفلسفة والمنطق، العلوم المتكاملة، اللغة العربية، اللغة الإنجليزية، البرمجة والذكاء الاصطناعي، اللغة الفرنسية)",
+				},
+				"keyword": map[string]interface{}{
+					"type":        "string",
+					"description": "كلمة بحثية اختيارية للبحث عن موضوع أو درس معين داخل الفهرس (اختياري)",
+				},
+			},
+			"required": []string{"grade", "subject"},
+		},
+	},
+}
+
+var readCurriculumLessonTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "read_curriculum_lesson",
+		Description: "قراءة واستخراج النص المعتمد لدرس معين من كتاب الوزارة الرسمي (ملف PDF) بناءً على اسم الملف أو رقمه الذي تم اختياره من الفهرس (مثل: '01_الجزء_1.pdf' أو '04_الدرس_الأول__البناء_الاجتماعي...pdf')",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"grade": map[string]interface{}{
+					"type":        "string",
+					"description": "الصف الدراسي (الصف الأول الثانوي أو الصف الثاني الثانوي)",
+				},
+				"subject": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم المادة",
+				},
+				"file_name": map[string]interface{}{
+					"type":        "string",
+					"description": "اسم ملف الـ PDF المراد قراءته من الفهرس أو رقم الدرس (مثال: '01_الجزء_1.pdf' أو '1')",
+				},
+			},
+			"required": []string{"grade", "subject", "file_name"},
+		},
+	},
+}
+
 type openRouterRequest struct {
 	Model     string              `json:"model"`
 	Messages  []openRouterMessage `json:"messages"`
@@ -516,19 +578,23 @@ func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem st
 	return "", fmt.Errorf("invalid math response format")
 }
 
-// SolveAcademicDirectly delegates academic, school/college curricula, science, language, and humanities questions directly to the high-IQ academic model.
+// SolveAcademicDirectly delegates academic questions directly to the curriculum model (Gemini 3.8 Flash) with dynamic tool loop.
 func (c *OpenRouterClient) SolveAcademicDirectly(ctx context.Context, subject, query string) (string, error) {
 	targetModel := c.modelAcademic
 	if targetModel == "" {
-		targetModel = "google/gemini-3.7-flash"
+		targetModel = "google/gemini-3.8-flash"
 	}
 
-	academicPrompt := fmt.Sprintf(`أنت خبير ومستشار المناهج الدراسية والعلوم واللغات الشامل عالي الذكاء (Academic & Curriculum Specialist).
+	academicPrompt := fmt.Sprintf(`أنت خبير ومستشار المناهج الدراسية المصرية الرسمية لعام 2026 (Academic & Curriculum Specialist).
 المادة/التخصص: %s
-المسألة أو السؤال:
+سؤال الطالب أو المسألة:
 %s
 
-قم بحل وشرح السؤال بالتفصيل وبأعلى درجات الدقة الأكاديمية والتربوية، مع توضيح خطوات الإجابة والقواعد العلمية أو اللغوية بأسلوب مبسط ومنظم.`, subject, query)
+قواعد هامة جداً للحل:
+1. أنت مزود بأدوات حية لتصفح كتب الوزارة الرسمية المتوفرة على السيرفر:
+   - استدعِ أداة 'browse_curriculum_index' لمعرفة أسماء الدروس وعناوينها واسم ملف الـ PDF الخاص بالدرس.
+   - استدعِ أداة 'read_curriculum_lesson' لقراءة محتوى الدرس المعتمد مباشرة من كتاب الوزارة.
+2. قم بحل وشرح السؤال للطالب خطوة بخطوة وبأعلى درجات الدقة والأمانة العلمية استناداً إلى كتاب الوزارة الرسمي.`, subject, query)
 
 	messages := []openRouterMessage{
 		{
@@ -537,15 +603,77 @@ func (c *OpenRouterClient) SolveAcademicDirectly(ctx context.Context, subject, q
 		},
 	}
 
-	choiceMsg, err := c.callAPICustom(ctx, targetModel, messages, nil, 3000)
-	if err != nil {
-		return "", err
+	curriculumTools := []toolDefinition{browseCurriculumIndexTool, readCurriculumLessonTool}
+
+	for step := 0; step < maxToolSteps; step++ {
+		choiceMsg, err := c.callAPICustom(ctx, targetModel, messages, curriculumTools, 3000)
+		if err != nil {
+			return "", err
+		}
+
+		if len(choiceMsg.ToolCalls) == 0 {
+			if contentStr, ok := choiceMsg.Content.(string); ok {
+				return strings.TrimSpace(contentStr), nil
+			}
+			return "", fmt.Errorf("invalid academic response format")
+		}
+
+		messages = append(messages, choiceMsg)
+
+		for _, call := range choiceMsg.ToolCalls {
+			switch call.Function.Name {
+			case "browse_curriculum_index", "explore_curriculum":
+				var args struct {
+					Grade   string `json:"grade"`
+					Subject string `json:"subject"`
+					Keyword string `json:"keyword"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				c.mu.Lock()
+				svc := c.curriculumSvc
+				c.mu.Unlock()
+				if svc == nil {
+					svc = curriculum.NewService("data/curriculum", "config/curriculum")
+				}
+				fmt.Printf("\n[📚 Academic Consultant Loop] Browsing index for grade: %q, subject: %q, keyword: %q\n", args.Grade, args.Subject, args.Keyword)
+				indexRes, idxErr := svc.BrowseIndex(args.Grade, args.Subject, args.Keyword)
+				if idxErr != nil {
+					indexRes = fmt.Sprintf("تعذر تصفح الفهرس: %v", idxErr)
+				}
+				messages = append(messages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    indexRes,
+				})
+
+			case "read_curriculum_lesson", "read_lesson_pdf":
+				var args struct {
+					Grade    string `json:"grade"`
+					Subject  string `json:"subject"`
+					FileName string `json:"file_name"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				c.mu.Lock()
+				svc := c.curriculumSvc
+				c.mu.Unlock()
+				if svc == nil {
+					svc = curriculum.NewService("data/curriculum", "config/curriculum")
+				}
+				fmt.Printf("\n[📖 Academic Consultant Loop] Reading lesson PDF: %q (%s / %s)\n", args.FileName, args.Grade, args.Subject)
+				contentRes, cErr := svc.ReadLesson(args.Grade, args.Subject, args.FileName)
+				if cErr != nil {
+					contentRes = fmt.Sprintf("تعذر قراءة ملف الدرس: %v", cErr)
+				}
+				messages = append(messages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    contentRes,
+				})
+			}
+		}
 	}
 
-	if contentStr, ok := choiceMsg.Content.(string); ok {
-		return strings.TrimSpace(contentStr), nil
-	}
-	return "", fmt.Errorf("invalid academic response format")
+	return "", fmt.Errorf("exceeded max tool steps in academic solver")
 }
 
 // executeConversation executes the message list, handling tool calls (web_search, schedule_followup, solve_math_problem, consult_curriculum_expert, update_user_memory).
@@ -554,7 +682,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	copy(currentMessages, messages)
 	usedSearch := false
 
-	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool}
+	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool, browseCurriculumIndexTool, readCurriculumLessonTool}
 
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
@@ -773,6 +901,54 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					Role:       "tool",
 					ToolCallID: call.ID,
 					Content:    toolResult,
+				})
+
+			case "browse_curriculum_index", "explore_curriculum":
+				var args struct {
+					Grade   string `json:"grade"`
+					Subject string `json:"subject"`
+					Keyword string `json:"keyword"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				c.mu.Lock()
+				svc := c.curriculumSvc
+				c.mu.Unlock()
+				if svc == nil {
+					svc = curriculum.NewService("data/curriculum", "config/curriculum")
+				}
+				fmt.Printf("\n[📚 Curriculum Tool] Browsing index for Grade: %q, Subject: %q, Keyword: %q\n", args.Grade, args.Subject, args.Keyword)
+				indexRes, idxErr := svc.BrowseIndex(args.Grade, args.Subject, args.Keyword)
+				if idxErr != nil {
+					indexRes = fmt.Sprintf("تعذر تصفح الفهرس: %v", idxErr)
+				}
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    indexRes,
+				})
+
+			case "read_curriculum_lesson", "read_lesson_pdf":
+				var args struct {
+					Grade    string `json:"grade"`
+					Subject  string `json:"subject"`
+					FileName string `json:"file_name"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				c.mu.Lock()
+				svc := c.curriculumSvc
+				c.mu.Unlock()
+				if svc == nil {
+					svc = curriculum.NewService("data/curriculum", "config/curriculum")
+				}
+				fmt.Printf("\n[📖 Curriculum Tool] Reading lesson PDF: %q (%s / %s)\n", args.FileName, args.Grade, args.Subject)
+				contentRes, cErr := svc.ReadLesson(args.Grade, args.Subject, args.FileName)
+				if cErr != nil {
+					contentRes = fmt.Sprintf("تعذر قراءة ملف الدرس: %v", cErr)
+				}
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role:       "tool",
+					ToolCallID: call.ID,
+					Content:    contentRes,
 				})
 
 			case "send_voice_note", "voice_note":

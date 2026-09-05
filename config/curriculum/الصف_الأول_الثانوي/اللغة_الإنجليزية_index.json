@@ -1,0 +1,65 @@
+{
+  "book_title": "اللغة الإنجليزية",
+  "grade": "الصف الأول الثانوي",
+  "subject_category": "languages",
+  "part": "English - Secondary 1",
+  "total_lessons": 8,
+  "lessons": [
+    {
+      "chapter": "Unit 1",
+      "lesson_title": "Unit 1: Egypt’s Heritage",
+      "start_page": 11,
+      "end_page": 23,
+      "summary": "Egyptian historical heritage, national pride, and grammar focus on Past Simple vs Past Continuous."
+    },
+    {
+      "chapter": "Unit 2",
+      "lesson_title": "Unit 2: Hands Help, Hearts Care",
+      "start_page": 24,
+      "end_page": 35,
+      "summary": "Community service, empathy, kindness, and modal verbs of obligation (must, have to)."
+    },
+    {
+      "chapter": "Unit 3",
+      "lesson_title": "Unit 3: Truth Vs. Lies",
+      "start_page": 36,
+      "end_page": 47,
+      "summary": "Media literacy, identifying fake news, critical thinking, and conditional sentences."
+    },
+    {
+      "chapter": "Revision 1",
+      "lesson_title": "Review 1 (Units 1 - 3)",
+      "start_page": 48,
+      "end_page": 56,
+      "summary": "Comprehensive language revision, reading comprehension, and vocabulary assessment for units 1 to 3."
+    },
+    {
+      "chapter": "Unit 4",
+      "lesson_title": "Unit 4: Save and Shine",
+      "start_page": 57,
+      "end_page": 68,
+      "summary": "Environmental protection, sustainability, and verb patterns (verbs followed by gerund or infinitive)."
+    },
+    {
+      "chapter": "Unit 5",
+      "lesson_title": "Unit 5: Using Technology at Schools",
+      "start_page": 69,
+      "end_page": 79,
+      "summary": "Educational technology, AI in language learning, and countable/uncountable nouns."
+    },
+    {
+      "chapter": "Unit 6",
+      "lesson_title": "Unit 6: Job Hunting",
+      "start_page": 80,
+      "end_page": 91,
+      "summary": "Modern career paths, professional networking, CV preparation, and articles (a, an, the)."
+    },
+    {
+      "chapter": "Revision 2",
+      "lesson_title": "Review 2 (Units 4 - 6)",
+      "start_page": 92,
+      "end_page": 100,
+      "summary": "Final comprehensive assessment, writing tasks, and grammar review for term one."
+    }
+  ]
+}

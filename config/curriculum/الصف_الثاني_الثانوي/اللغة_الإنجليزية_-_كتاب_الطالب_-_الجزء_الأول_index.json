@@ -1,0 +1,37 @@
+{
+  "book_title": "اللغة الإنجليزية - كتاب الطالب - الجزء الأول",
+  "grade": "الصف الثاني الثانوي",
+  "subject_category": "languages",
+  "part": "English - Secondary 2 - Term 1",
+  "total_lessons": 4,
+  "lessons": [
+    {
+      "chapter": "Unit 1",
+      "lesson_title": "Unit 1: Staying Healthy and Safe",
+      "start_page": 8,
+      "end_page": 25,
+      "summary": "First aid, emergency responses, immune system health, and modal verbs for rules and necessity."
+    },
+    {
+      "chapter": "Unit 2",
+      "lesson_title": "Unit 2: Food and Future Agriculture",
+      "start_page": 26,
+      "end_page": 42,
+      "summary": "Global food production, sustainable agriculture, genetically modified crops, and comparative structures."
+    },
+    {
+      "chapter": "Unit 3",
+      "lesson_title": "Unit 3: The Future of Space and Innovation",
+      "start_page": 43,
+      "end_page": 60,
+      "summary": "Space missions, satellites, technological advancements, and future tenses (will, going to, future continuous)."
+    },
+    {
+      "chapter": "Revision 1",
+      "lesson_title": "Review 1 (Units 1 - 3)",
+      "start_page": 61,
+      "end_page": 70,
+      "summary": "Comprehensive vocabulary and grammar review, listening and reading practice for Term 1."
+    }
+  ]
+}

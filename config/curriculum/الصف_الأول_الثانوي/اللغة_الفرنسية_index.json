@@ -1,0 +1,44 @@
+{
+  "book_title": "اللغة الفرنسية",
+  "grade": "الصف الأول الثانوي",
+  "subject_category": "languages",
+  "part": "Club @dos plus 1",
+  "total_lessons": 5,
+  "lessons": [
+    {
+      "chapter": "Unité 1",
+      "lesson_title": "Unité 1: Le club de ma classe",
+      "start_page": 9,
+      "end_page": 28,
+      "summary": "Saluer, se présenter, présenter ses camarades, les nombres de 0 à 50, et les couleurs."
+    },
+    {
+      "chapter": "Unité 2",
+      "lesson_title": "Unité 2: Le club des artistes",
+      "start_page": 29,
+      "end_page": 48,
+      "summary": "Identifier et décrire des objets de la classe, parler de ses goûts, et les articles indéfinis."
+    },
+    {
+      "chapter": "Unité 3",
+      "lesson_title": "Unité 3: Le club des lecteurs",
+      "start_page": 49,
+      "end_page": 68,
+      "summary": "Décrire son lycée, identifier les lieux de l'école, et exprimer la possession."
+    },
+    {
+      "chapter": "Unité 4",
+      "lesson_title": "Unité 4: Le club des athlètes",
+      "start_page": 69,
+      "end_page": 88,
+      "summary": "Parler des activités physiques, décrire les membres de la famille, et les adjectifs possessifs."
+    },
+    {
+      "chapter": "Cahier d'activités",
+      "lesson_title": "Exercices et évaluations DELF A1",
+      "start_page": 89,
+      "end_page": 120,
+      "summary": "Activités d'application, fiches d'auto-évaluation et préparation à l'épreuve du DELF."
+    }
+  ]
+}

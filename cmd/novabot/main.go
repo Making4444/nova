@@ -15,6 +15,7 @@ import (
 	"novabot/internal/admin"
 	"novabot/internal/ai"
 	"novabot/internal/config"
+	"novabot/internal/curriculum"
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/memory"
@@ -99,6 +100,20 @@ func performHealthCheck(cfg *config.Config) {
 		fmt.Println("  [⚠️ FFmpeg] غير مثبت! لتفعيل الفويس نوت قم بتثبيته: sudo apt install ffmpeg")
 	}
 
+	// 4. Poppler-utils (pdftotext) check
+	if _, err := exec.LookPath("pdftotext"); err == nil {
+		fmt.Println("  [✅ Poppler (pdftotext)] متوفر ومثبت (استخراج نصوص كتب الوزارة الرسمية 2026 جاهز)")
+	} else {
+		fmt.Println("  [⚠️ Poppler (pdftotext)] غير مثبت! لاستخراج نصوص الكتب المدرسية كاملة قم بتثبيته: sudo apt install -y poppler-utils")
+	}
+
+	// 5. Curriculum directory check
+	if _, err := os.Stat("data/curriculum"); err == nil {
+		fmt.Println("  [✅ المناهج الدراسية] مجلد المناهج data/curriculum متوفر وجاهز")
+	} else {
+		fmt.Println("  [ℹ️ المناهج الدراسية] مجلد data/curriculum غير متوفر محلياً (يعتمد على ملفات السيرفر وفهارس config/curriculum)")
+	}
+
 	fmt.Println()
 }
 
@@ -180,6 +195,8 @@ func main() {
 		initialPrompt,
 	)
 	aiClient.SetMemoryUpdater(memStore)
+	curriculumService := curriculum.NewService("data/curriculum", "config/curriculum")
+	aiClient.SetCurriculumService(curriculumService)
 
 	limiter := trigger.NewChatLimiter(cfg.ChatCooldownSeconds)
 

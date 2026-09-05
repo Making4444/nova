@@ -10,7 +10,7 @@ data/
 *.db-wal
 
 # Binary executables and builds
-novabot
+/novabot
 novabot.exe
 *.exe
 *.exe~

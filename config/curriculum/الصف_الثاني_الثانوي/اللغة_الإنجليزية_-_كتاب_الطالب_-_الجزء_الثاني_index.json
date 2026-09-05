@@ -1,0 +1,37 @@
+{
+  "book_title": "اللغة الإنجليزية - كتاب الطالب - الجزء الثاني",
+  "grade": "الصف الثاني الثانوي",
+  "subject_category": "languages",
+  "part": "English - Secondary 2 - Term 2",
+  "total_lessons": 4,
+  "lessons": [
+    {
+      "chapter": "Unit 4",
+      "lesson_title": "Unit 4: Global Communication and Identity",
+      "start_page": 8,
+      "end_page": 25,
+      "summary": "Languages of the world, digital messaging, cultural diversity, and relative clauses."
+    },
+    {
+      "chapter": "Unit 5",
+      "lesson_title": "Unit 5: Being Smart Online and Cyber Safety",
+      "start_page": 26,
+      "end_page": 42,
+      "summary": "Online scams, data security, digital footprints, and passive voice in various tenses."
+    },
+    {
+      "chapter": "Unit 6",
+      "lesson_title": "Unit 6: Climate Resilience and Green Energy",
+      "start_page": 43,
+      "end_page": 60,
+      "summary": "Renewable energy breakthroughs, eco-friendly lifestyle, and reported speech."
+    },
+    {
+      "chapter": "Revision 2",
+      "lesson_title": "Review 2 (Units 4 - 6)",
+      "start_page": 61,
+      "end_page": 70,
+      "summary": "Final skills assessment, essay writing preparation, and semester language consolidation."
+    }
+  ]
+}

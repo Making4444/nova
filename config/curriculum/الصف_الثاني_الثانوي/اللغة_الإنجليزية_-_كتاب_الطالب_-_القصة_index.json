@@ -1,0 +1,44 @@
+{
+  "book_title": "اللغة الإنجليزية - كتاب الطالب - القصة",
+  "grade": "الصف الثاني الثانوي",
+  "subject_category": "languages",
+  "part": "Literature: King Lear by William Shakespeare",
+  "total_lessons": 5,
+  "lessons": [
+    {
+      "chapter": "Act 1",
+      "lesson_title": "Act 1: The Test of Love and Division of Britain",
+      "start_page": 5,
+      "end_page": 22,
+      "summary": "King Lear demands declarations of love from his daughters, banishes Cordelia and Kent."
+    },
+    {
+      "chapter": "Act 2",
+      "lesson_title": "Act 2: The Rising Storm and Betrayal",
+      "start_page": 23,
+      "end_page": 40,
+      "summary": "Goneril and Regan betray their father, stripping away his followers and driving him outside."
+    },
+    {
+      "chapter": "Act 3",
+      "lesson_title": "Act 3: Madness on the Blasted Heath",
+      "start_page": 41,
+      "end_page": 60,
+      "summary": "Lear confronts the violent storm, meets Edgar disguised as Poor Tom, moral breakdown of power."
+    },
+    {
+      "chapter": "Act 4",
+      "lesson_title": "Act 4: Cordelia's Return and Reconciliation",
+      "start_page": 61,
+      "end_page": 80,
+      "summary": "Gloucester is blinded, Lear is rescued by Cordelia's French army, father and daughter reunite."
+    },
+    {
+      "chapter": "Act 5",
+      "lesson_title": "Act 5: The Tragic Battle and Aftermath",
+      "start_page": 81,
+      "end_page": 95,
+      "summary": "The final tragic climax: Edmund defeated, deaths of Cordelia and Lear, restoration of moral order."
+    }
+  ]
+}
