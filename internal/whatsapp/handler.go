@@ -453,8 +453,8 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// 8. Call Multi-Model AI Router
-	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
-	defer cancel()
+	aiCtx, aiCancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer aiCancel()
 
 	// Inject Emotion Engine State and Mood
 	isMaker := (h.adminState != nil && h.adminState.IsAdmin(senderID, senderName, evt.Info.IsFromMe))
@@ -466,7 +466,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// Inject Tri-Tier Comprehensive Memory Context
 	if h.memoryEngine != nil {
-		if vectorCtx, err := h.memoryEngine.GetComprehensiveContext(ctx, chatID, senderID, cleanText); err == nil && vectorCtx != "" {
+		if vectorCtx, err := h.memoryEngine.GetComprehensiveContext(aiCtx, chatID, senderID, cleanText); err == nil && vectorCtx != "" {
 			payload.VectorMemories = &vectorCtx
 		}
 	}
@@ -477,7 +477,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	h.logger.Infof("Trigger matched in chat %s by %s, generating AI response...", chatID, senderName)
-	aiResp, err := h.aiClient.GenerateResponse(ctx, payload)
+	aiResp, err := h.aiClient.GenerateResponse(aiCtx, payload)
 	if err != nil {
 		h.logger.Errorf("Failed to generate AI response for message %s: %v", messageID, err)
 		return
@@ -503,38 +503,37 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
 	isVoiceRequested := IsVoiceRequested(cleanText)
 	aiWantsVoice := (aiResp.SendAsVoice != nil && *aiResp.SendAsVoice)
+	shouldSendVoice := (isVoiceRequested || isVoiceIncoming || aiWantsVoice)
 
 	if h.waClient == nil {
 		h.logger.Errorf("WhatsApp client not configured, cannot send reply")
 		return
 	}
 
-	replyLen := len([]rune(*aiResp.ReplyText))
-	// Don't auto-generate voice note if text is a massive study explanation (> 500 characters) unless explicitly requested
-	shouldSendVoice := (isVoiceRequested || (aiWantsVoice && replyLen <= 500) || (isVoiceIncoming && replyLen <= 300))
-
 	var sentMsgID types.MessageID
 	if shouldSendVoice && h.ttsClient != nil {
-		ttsCtx, ttsCancel := context.WithTimeout(context.Background(), 25*time.Second)
+		ttsCtx, ttsCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ttsCtx, *aiResp.ReplyText)
 		ttsCancel()
 
 		if ttsErr == nil && len(oggBytes) > 0 {
-			sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			sendCtx, sendCancel := context.WithTimeout(context.Background(), 60*time.Second)
 			sentMsgID, err = h.waClient.SendVoiceNote(sendCtx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String(), text)
 			sendCancel()
 			if err == nil {
 				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds)", durSec)
+			} else {
+				h.logger.Errorf("Failed to send voice note to WhatsApp: %v", err)
 			}
 		} else {
 			h.logger.Warnf("TTS synthesis failed (%v), falling back to text reply", ttsErr)
 		}
 	}
 
-	// If not sent as voice note, send regular text reply (cleaning any audio tags so they never appear in text chat!)
+	// If not sent as voice note (model chose text or TTS failed), send regular text reply
 	if sentMsgID == "" {
 		cleanReplyText := StripAudioTags(*aiResp.ReplyText)
-		replyCtx, replyCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		replyCtx, replyCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		sentMsgID, err = h.waClient.SendReply(replyCtx, evt.Info.Chat, cleanReplyText, targetMsgID, evt.Info.Sender.String(), text)
 		replyCancel()
 	}
