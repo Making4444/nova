@@ -41,6 +41,7 @@ type OpenRouterClient struct {
 	modelAcademic       string
 	modelVision         string
 	modelSummarizer     string
+	maxTokens           int
 	groqRouter          *GroqRouter
 	systemPrompt        string
 	searchEngine        *SearchEngine
@@ -82,6 +83,7 @@ func NewMultiModelClient(
 		modelAcademic:   modelAcademic,
 		modelVision:     modelVision,
 		modelSummarizer: modelSummarizer,
+		maxTokens:       4096,
 		groqRouter:      groqRouter,
 		systemPrompt:    systemPrompt,
 		searchEngine:    NewSearchEngine(apiKey, "perplexity/sonar"),
@@ -90,6 +92,25 @@ func NewMultiModelClient(
 			Timeout: 120 * time.Second,
 		},
 	}
+}
+
+// SetMaxTokens sets the maximum token limit for model completions.
+func (c *OpenRouterClient) SetMaxTokens(tokens int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if tokens > 0 {
+		c.maxTokens = tokens
+	}
+}
+
+// GetMaxTokens returns the configured maximum tokens limit.
+func (c *OpenRouterClient) GetMaxTokens() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.maxTokens <= 0 {
+		return 4096
+	}
+	return c.maxTokens
 }
 
 // NewOpenRouterClient creates a backwards-compatible client.
@@ -426,7 +447,8 @@ type openRouterRequest struct {
 }
 
 type openRouterChoice struct {
-	Message openRouterMessage `json:"message"`
+	Message      openRouterMessage `json:"message"`
+	FinishReason string            `json:"finish_reason,omitempty"`
 }
 
 type openRouterResponse struct {
@@ -435,6 +457,127 @@ type openRouterResponse struct {
 		Message string `json:"message"`
 		Code    int    `json:"code"`
 	} `json:"error,omitempty"`
+}
+
+// buildSystemPrompt enriches Nova's core persona prompt with live WhatsApp context, current time in Cairo,
+// group metadata, user memory, and emotional state in clean markdown instead of machine JSON.
+func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) string {
+	var sb strings.Builder
+	sb.WriteString(c.GetSystemPrompt())
+
+	sb.WriteString("\n\n---\n")
+	sb.WriteString("### [بيانات وسياق المحادثة الحالية على واتساب]:\n")
+
+	if payload.ChatType == "group" {
+		groupName := "جروب"
+		if payload.ChatName != nil && strings.TrimSpace(*payload.ChatName) != "" {
+			groupName = strings.TrimSpace(*payload.ChatName)
+		}
+		sb.WriteString(fmt.Sprintf("- نوع المحادثة: جروب واتساب (اسم الجروب: %q)\n", groupName))
+	} else {
+		sb.WriteString("- نوع المحادثة: شات خاص ومباشر بينك وبين المستخدم\n")
+	}
+
+	if payload.CurrentTime != "" {
+		timeInfo := payload.CurrentTime
+		if payload.TimeOfDay != "" {
+			timeInfo += " - " + payload.TimeOfDay
+		}
+		sb.WriteString(fmt.Sprintf("- التوقيت الحالي في مصر: %s\n", timeInfo))
+	}
+
+	if payload.SenderName != "" {
+		sb.WriteString(fmt.Sprintf("- الطرف الذي يخاطبك الآن: %s\n", payload.SenderName))
+	}
+
+	if payload.UserMemory != nil && strings.TrimSpace(*payload.UserMemory) != "" {
+		sb.WriteString(fmt.Sprintf("- ذاكرتك ومعلوماتك السابقة عن %s:\n%s\n", payload.SenderName, strings.TrimSpace(*payload.UserMemory)))
+	}
+
+	if payload.EmotionContext != nil && strings.TrimSpace(*payload.EmotionContext) != "" {
+		sb.WriteString(fmt.Sprintf("- حالتك المزاجية والنفسية الحالية:\n%s\n", strings.TrimSpace(*payload.EmotionContext)))
+	}
+
+	if payload.ChatSummary != nil && strings.TrimSpace(*payload.ChatSummary) != "" {
+		sb.WriteString(fmt.Sprintf("- ملخص المحادثات القديمة السابقة في هذا الشات:\n%s\n", strings.TrimSpace(*payload.ChatSummary)))
+	}
+
+	if payload.VectorMemories != nil && strings.TrimSpace(*payload.VectorMemories) != "" {
+		sb.WriteString(fmt.Sprintf("- معلومات وذكريات مسترجعة ذات صلة:\n%s\n", strings.TrimSpace(*payload.VectorMemories)))
+	}
+
+	return sb.String()
+}
+
+// buildMessages constructs native conversation turns (system, user, assistant) from the chat history
+// so the LLM experiences authentic multi-turn context instead of a raw machine JSON blob.
+func (c *OpenRouterClient) buildMessages(payload *trigger.RequestPayload) []openRouterMessage {
+	systemPrompt := c.buildSystemPrompt(payload)
+	messages := []openRouterMessage{
+		{Role: "system", Content: systemPrompt},
+	}
+
+	// Add recent context as natural conversational turns
+	for _, msg := range payload.RecentContext {
+		text := strings.TrimSpace(msg.Text)
+		if text == "" {
+			continue
+		}
+		if msg.IsNova {
+			messages = append(messages, openRouterMessage{
+				Role:    "assistant",
+				Content: text,
+			})
+		} else {
+			userText := text
+			if payload.ChatType == "group" && msg.SenderName != "" {
+				userText = fmt.Sprintf("[%s]: %s", msg.SenderName, text)
+			}
+			messages = append(messages, openRouterMessage{
+				Role:    "user",
+				Content: userText,
+			})
+		}
+	}
+
+	// Format current incoming message
+	currentText := strings.TrimSpace(payload.MessageText)
+	if payload.IsReply && payload.RepliedTo != nil && strings.TrimSpace(payload.RepliedTo.Text) != "" {
+		repliedSender := payload.RepliedTo.SenderName
+		if repliedSender == "" {
+			repliedSender = "أحد أفراد الشات"
+		}
+		currentText = fmt.Sprintf("(رداً على %s: %q)\n%s", repliedSender, strings.TrimSpace(payload.RepliedTo.Text), currentText)
+	}
+
+	if payload.ChatType == "group" && payload.SenderName != "" {
+		currentText = fmt.Sprintf("[%s]: %s", payload.SenderName, currentText)
+	}
+
+	var currentContent interface{}
+	if payload.MediaDataURL != nil && *payload.MediaDataURL != "" {
+		currentContent = []contentPart{
+			{
+				Type: "text",
+				Text: currentText,
+			},
+			{
+				Type: "image_url",
+				ImageURL: &imageURL{
+					URL: *payload.MediaDataURL,
+				},
+			},
+		}
+	} else {
+		currentContent = currentText
+	}
+
+	messages = append(messages, openRouterMessage{
+		Role:    "user",
+		Content: currentContent,
+	})
+
+	return messages
 }
 
 // GenerateResponse sends the payload to OpenRouter using multi-model smart routing.
@@ -470,38 +613,10 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		}
 	}
 
-	// Prepare user message content (Multimodal if MediaDataURL exists)
-	var userContent interface{}
-	payloadForText := *payload
-	payloadForText.MediaDataURL = nil
-	payloadBytes, err := json.Marshal(payloadForText)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request payload: %w", err)
-	}
+	// 2. Build native multi-turn conversation messages
+	messages := c.buildMessages(payload)
 
-	if mediaURL != nil && *mediaURL != "" {
-		userContent = []contentPart{
-			{
-				Type: "text",
-				Text: string(payloadBytes),
-			},
-			{
-				Type: "image_url",
-				ImageURL: &imageURL{
-					URL: *mediaURL,
-				},
-			},
-		}
-	} else {
-		userContent = string(payloadBytes)
-	}
-
-	messages := []openRouterMessage{
-		{Role: "system", Content: c.GetSystemPrompt()},
-		{Role: "user", Content: userContent},
-	}
-
-	// 2. Execute initial attempt with Tool Calling loop
+	// 3. Execute initial attempt with Tool Calling loop
 	rawResp, usedSearch, err := c.executeConversation(ctx, selectedModel, messages, payload)
 	if err != nil {
 		c.recordFailure()
@@ -570,7 +685,7 @@ func (c *OpenRouterClient) SolveMathDirectly(ctx context.Context, mathProblem st
 		},
 	}
 
-	choiceMsg, err := c.callAPI(ctx, mathModel, messages, nil)
+	choiceMsg, err := c.callAPICustom(ctx, mathModel, messages, nil, 5000)
 	if err != nil {
 		return "", err
 	}
@@ -609,7 +724,7 @@ func (c *OpenRouterClient) SolveAcademicDirectly(ctx context.Context, subject, q
 	curriculumTools := []toolDefinition{browseCurriculumIndexTool, readCurriculumLessonTool}
 
 	for step := 0; step < maxToolSteps; step++ {
-		choiceMsg, err := c.callAPICustom(ctx, targetModel, messages, curriculumTools, 3000)
+		choiceMsg, err := c.callAPICustom(ctx, targetModel, messages, curriculumTools, 5000)
 		if err != nil {
 			return "", err
 		}
@@ -991,12 +1106,12 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 }
 
 func (c *OpenRouterClient) callAPI(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition) (openRouterMessage, error) {
-	return c.callAPICustom(ctx, model, messages, tools, 2000)
+	return c.callAPICustom(ctx, model, messages, tools, c.GetMaxTokens())
 }
 
 func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition, maxTokens int) (openRouterMessage, error) {
 	if maxTokens <= 0 {
-		maxTokens = 2000
+		maxTokens = c.GetMaxTokens()
 	}
 	reqBody := openRouterRequest{
 		Model:     model,
@@ -1048,7 +1163,12 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 		return openRouterMessage{}, errors.New("openrouter returned empty choices list")
 	}
 
-	return orResp.Choices[0].Message, nil
+	choice := orResp.Choices[0]
+	if choice.FinishReason == "length" {
+		fmt.Printf("\n[⚠️ Warning] OpenRouter response reached max_tokens ceiling (%d tokens)! Output was truncated by provider.\n", maxTokens)
+	}
+
+	return choice.Message, nil
 }
 
 // SummarizeChatHistory analyzes raw messages from a conversation and generates a structured summary + user profiles.

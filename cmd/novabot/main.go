@@ -87,8 +87,8 @@ func performHealthCheck(cfg *config.Config) {
 
 	// 2. OpenRouter check
 	if cfg.OpenRouterAPIKey != "" {
-		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | المناهج والعلوم: %s | الرؤية: %s | التلخيص: %s)\n",
-			cfg.ModelChat, cfg.ModelMath, cfg.ModelAcademic, cfg.ModelVision, cfg.ModelSummarizer)
+		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | المناهج والعلوم: %s | الرؤية: %s | التلخيص: %s | أقصى توكنز: %d)\n",
+			cfg.ModelChat, cfg.ModelMath, cfg.ModelAcademic, cfg.ModelVision, cfg.ModelSummarizer, cfg.MaxTokens)
 	} else {
 		fmt.Println("  [❌ OpenRouter] لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
 	}
@@ -194,6 +194,7 @@ func main() {
 		groqRouter,
 		initialPrompt,
 	)
+	aiClient.SetMaxTokens(cfg.MaxTokens)
 	aiClient.SetMemoryUpdater(memStore)
 	curriculumService := curriculum.NewService("data/curriculum", "config/curriculum")
 	aiClient.SetCurriculumService(curriculumService)

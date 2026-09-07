@@ -25,6 +25,7 @@ type Config struct {
 	SessionDBPath       string
 	ChatCooldownSeconds int
 	ContextHistoryLimit int
+	MaxTokens           int
 	TTSModel            string
 	TTSVoice            string
 	DashboardPort       int
@@ -126,6 +127,14 @@ func LoadConfig() (*Config, error) {
 		ttsVoice = "Puck" // High-expressiveness male voice for Nova
 	}
 
+	// Max tokens configuration (default 4096 for long Arabic explanations & conversation)
+	maxTokens := 4096
+	if mtStr := os.Getenv("MAX_TOKENS"); mtStr != "" {
+		if v, err := strconv.Atoi(mtStr); err == nil && v > 0 {
+			maxTokens = v
+		}
+	}
+
 	dashboardPort := 8080
 	if dpStr := os.Getenv("DASHBOARD_PORT"); dpStr != "" {
 		if v, err := strconv.Atoi(dpStr); err == nil && v > 0 {
@@ -153,6 +162,7 @@ func LoadConfig() (*Config, error) {
 		SessionDBPath:       sessionDB,
 		ChatCooldownSeconds: cooldownSec,
 		ContextHistoryLimit: historyLimit,
+		MaxTokens:           maxTokens,
 		TTSModel:            ttsModel,
 		TTSVoice:            ttsVoice,
 		DashboardPort:       dashboardPort,
