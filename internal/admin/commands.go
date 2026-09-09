@@ -273,6 +273,63 @@ func HandleAdminCommand(
 			ReplyText: fmt.Sprintf("✅ *تم بنجاح ضبط وضع تفكير النموذج على:* `%s`\n(%s)", newEffort, desc),
 		}
 
+	case "name", "callme", "لقب", "ناديني":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+		if len(parts) < 2 {
+			currentNick := ""
+			if state != nil {
+				currentNick = state.GetChatNickname(chatID, senderID)
+			}
+			statusText := "غير محدد (يناديك باسمك المسجل)"
+			if currentNick != "" {
+				statusText = fmt.Sprintf("👑 *%s*", currentNick)
+			}
+			msg := fmt.Sprintf("🏷️ *تخصيص اللقب في هذا الشات فقط (Chat Nickname):*\n\n"+
+				"• *اللقب الحالي لك هنا:* %s\n\n"+
+				"💡 *طريقة الاستخدام:*\n"+
+				"• `/name <اللقب الجديد>` (مثلاً: `/name الباشمهندس` أو `/name كيمو` أو `/name يا برنس`)\n"+
+				"• لإلغاء اللقب والرجوع لاسمك العادي: `/name reset` أو `/name clear`\n\n"+
+				"📌 *ملاحظة:* هذا اللقب يتم استخدامه داخل هذا الشات فقط ولن يؤثر على أي شات أو جروب تاني!", statusText)
+			return CommandResult{Handled: true, ReplyText: msg}
+		}
+
+		arg := strings.Join(parts[1:], " ")
+		arg = strings.TrimSpace(arg)
+		lowerArg := strings.ToLower(arg)
+
+		if lowerArg == "reset" || lowerArg == "clear" || lowerArg == "افتراضي" || lowerArg == "مسح" || lowerArg == "الغاء" || lowerArg == "إلغاء" {
+			if state != nil {
+				_ = state.ClearChatNickname(chatID, senderID)
+			}
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "✅ *تم إلغاء اللقب الخاص في هذا الشات بنجاح!*\nنوفا هيناديك دلوقتي باسمك الطبيعي المسجل.",
+			}
+		}
+
+		if len(arg) > 40 {
+			return CommandResult{
+				Handled:   true,
+				ReplyText: "⚠️ اللقب طويل جداً، يرجى اختيار اسم أو لقب لا يتجاوز 40 حرفاً.",
+			}
+		}
+
+		if state != nil {
+			if err := state.SetChatNickname(chatID, senderID, arg); err != nil {
+				return CommandResult{
+					Handled:   true,
+					ReplyText: fmt.Sprintf("❌ فشل حفظ اللقب: %v", err),
+				}
+			}
+		}
+
+		return CommandResult{
+			Handled:   true,
+			ReplyText: fmt.Sprintf("✅ *تمام يا %s! عُلم ويُنفذ.*\nمن اللحظة دي في الشات ده بس، نوفا هيناديك بـ *\"%s\"* دايماً 🫡✨", arg, arg),
+		}
+
 	case "set", "ضبط":
 		if !isAdmin {
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
@@ -589,6 +646,54 @@ func HandleAdminCommand(
 			Handled:   true,
 			ReplyText: msg,
 		}
+
+	case "help", "commands", "اوامر", "أوامر":
+		if !isAdmin {
+			return CommandResult{
+				Handled: true,
+				ReplyText: "🤖 *أوامر نوفا التفاعلية:*\n\n" +
+					"• `/game` : بدء مسابقة تفاعلية في الجروب (سينما، ثقافة، فوازير) 🎮\n" +
+					"• `/game movie` : مسابقة إفيهات وأفلام مصرية 🎬\n" +
+					"• `/game trivia` : مسابقة معلومات عامة وكورة ⚽\n" +
+					"• `/game riddle` : فوازير وألغاز ذكاء 🧩\n" +
+					"• `/game stop` : إيقاف المسابقة الحالية 🛑\n" +
+					"• `/top` : عرض قائمة أوائل المتسابقين والترتيب 🏆\n\n" +
+					"💡 *للتحدث مع نوفا:* ناديه بـ (يا نوفا) أو اعمل له ريبلاي في أي وقت!",
+			}
+		}
+
+		helpMsg := "👑 *دليل أوامر الإدارة الشامل لبوت نوفا (Nova Admin Commands):*\n\n" +
+			"⚙️ *التحكم والتشغيل:*\n" +
+			"• `start` أو `/start` : تشغيل السيرفرات واستقبال الرسائل 🟢\n" +
+			"• `shutdown` أو `/shutdown` : إيقاف السيرفرات مؤقتاً لوضع الصيانة 🔴\n" +
+			"• `/status` : عرض تقرير الحالة، وقت التشغيل، والنماذج 📊\n\n" +
+			"👥 *إدارة المشرفين:*\n" +
+			"• `/admin add` : إضافة مشرف جديد (بالرد على رسالته أو كتابة رقمه)\n" +
+			"• `/admin remove <رقم>` : إزالة مشرف\n" +
+			"• `/admin list` : عرض قائمة المشرفين الحاليين\n\n" +
+			"🏷️ *تخصيص اللقب والمناداة (خاص بكل شات):*\n" +
+			"• `/name <اللقب>` : تحديد الاسم أو اللقب اللي نوفا هيناديك بيه في هذا الشات فقط\n" +
+			"• `/name reset` : إلغاء اللقب والرجوع لاسمك الأصلي\n\n" +
+			"🧠 *الذكاء والتفكير:*\n" +
+			"• `/thinking auto` : تفكير تلقائي ذكي حسب صعوبة السؤال\n" +
+			"• `/thinking off` : إيقاف التفكير (سرعة فائقة ورد فوري في ثانية)\n" +
+			"• `/thinking low | high` : تفكير خفيف أو عميق جداً\n\n" +
+			"🎭 *الشخصية وسياق الشات:*\n" +
+			"• `/persona 1` : تفعيل نمط الشباب والقهوة ☕\n" +
+			"• `/persona 2` : تفعيل نمط الجنتلمان مع البنات 🌸\n" +
+			"• `/set <عدد|all>` : تحديد حد سياق الرسائل في الشات\n" +
+			"• `/auto on|off` : تشغيل أو إيقاف المشغلات التلقائية التفاعلية\n\n" +
+			"📂 *الأرشفة والتلخيص:*\n" +
+			"• `/archive` : أرشفة الشات الحالي وتلخيصه وتوليد ملف جديد نظيف\n" +
+			"• `/archive list` : عرض المحادثات المؤرشفة\n" +
+			"• `/archive load <رقم>` : استرجاع محادثة مؤرشفة\n\n" +
+			"🎮 *الألعاب والمسابقات:*\n" +
+			"• `/game` : بدء مسابقة أسئلة سريعة في الجروب\n" +
+			"• `/game movie | trivia | riddle` : اختيار تصنيف اللعبة\n" +
+			"• `/game stop` : إيقاف اللعبة الحالية\n" +
+			"• `/top` : عرض لوحة المتصدرين والنقاط 🏆"
+
+		return CommandResult{Handled: true, ReplyText: helpMsg}
 	}
 
 	return CommandResult{Handled: false}

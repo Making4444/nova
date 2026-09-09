@@ -17,6 +17,7 @@ import (
 	"novabot/internal/admin"
 	"novabot/internal/ai"
 	"novabot/internal/emotion"
+	"novabot/internal/games"
 	"novabot/internal/memory"
 	"novabot/internal/storage"
 	"novabot/internal/tools"
@@ -44,6 +45,7 @@ type EventHandler struct {
 	adminState      *admin.State
 	schedulerEngine SchedulerEngineInterface
 	statsProvider   admin.StatsProvider
+	gameEngine      *games.Engine
 	limiter         *trigger.ChatLimiter
 	historyLimit    int
 	logger          waLog.Logger
@@ -115,6 +117,11 @@ func (h *EventHandler) SetThinkingEffort(effort string) {
 	if h.aiClient != nil {
 		h.aiClient.SetThinkingEffort(effort)
 	}
+}
+
+// SetGameEngine attaches the interactive competition and game engine.
+func (h *EventHandler) SetGameEngine(ge *games.Engine) {
+	h.gameEngine = ge
 }
 
 // ArchiveChatSession summarizes and archives the current chat, updating user profiles.
@@ -292,6 +299,16 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	if senderName == "" {
 		senderName = evt.Info.Sender.User
 	}
+	if h.adminState != nil {
+		if customNick := h.adminState.GetChatNickname(chatID, senderID); customNick != "" {
+			senderName = customNick
+		}
+		if isReply && repliedSender != "" {
+			if customNick := h.adminState.GetChatNickname(chatID, repliedSender); customNick != "" {
+				repliedSender = customNick
+			}
+		}
+	}
 	messageID := evt.Info.ID
 
 	chatType := "private"
@@ -356,6 +373,64 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 				h.logger.Errorf("Failed to send command reply: %v", err)
 			}
 			return
+		}
+	}
+
+	// 3.5 Game Commands & Automatic Answer Interception
+	if h.gameEngine != nil {
+		lowerClean := strings.ToLower(cleanText)
+		isGameCmd := strings.HasPrefix(lowerClean, "/game") || strings.HasPrefix(lowerClean, "!game") ||
+			strings.HasPrefix(lowerClean, ".game") || strings.HasPrefix(lowerClean, "/لعبة") ||
+			strings.HasPrefix(lowerClean, "/top") || strings.HasPrefix(lowerClean, "!top") ||
+			strings.HasPrefix(lowerClean, ".top") || strings.HasPrefix(lowerClean, "/ترتيب")
+
+		if isGameCmd {
+			parts := strings.Fields(cleanText)
+			baseCmd := strings.ToLower(parts[0])
+			if strings.HasPrefix(baseCmd, "/") || strings.HasPrefix(baseCmd, "!") || strings.HasPrefix(baseCmd, ".") {
+				baseCmd = baseCmd[1:]
+			}
+
+			if baseCmd == "top" || baseCmd == "ترتيب" || baseCmd == "ليدربورد" {
+				topMsg := h.gameEngine.GetLeaderboardText(chatID)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				_ = h.SendMessage(ctx, chatID, topMsg, messageID)
+				cancel()
+				return
+			}
+
+			if baseCmd == "game" || baseCmd == "لعبة" || baseCmd == "مسابقة" {
+				subCmd := ""
+				if len(parts) > 1 {
+					subCmd = strings.ToLower(parts[1])
+				}
+
+				if subCmd == "stop" || subCmd == "وقف" || subCmd == "قفل" || subCmd == "الغاء" || subCmd == "إلغاء" {
+					stopReply, _ := h.gameEngine.StopGame(chatID)
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					_ = h.SendMessage(ctx, chatID, stopReply, messageID)
+					cancel()
+					return
+				}
+
+				// Start game
+				msg, _ := h.gameEngine.StartGame(chatID, subCmd)
+				if msg != "" {
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					_ = h.SendMessage(ctx, chatID, msg, messageID)
+					cancel()
+				}
+				return
+			}
+		}
+
+		// If a game is active in this chat, intercept and check answer automatically
+		if h.gameEngine.HasActiveGame(chatID) {
+			matched, _ := h.gameEngine.ProcessAnswer(chatID, senderID, senderName, cleanText, messageID)
+			if matched {
+				h.logger.Infof("Game answer matched by %s (%s) in chat %s: %s", senderName, senderID, chatID, cleanText)
+				return
+			}
 		}
 	}
 

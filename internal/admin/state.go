@@ -17,9 +17,10 @@ type State struct {
 	AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"` // chatID -> bool
 	ActivePersona       int             `json:"active_persona"`        // 1 = Bro/Default, 2 = Charming/Female
 	AdminNumber         string          `json:"admin_number"`          // e.g. "201202172699"
-	AdminsList          []string        `json:"admins_list"`           // List of additional admin phone numbers / JIDs
-	ThinkingEffort      string          `json:"thinking_effort"`       // "auto", "none", "low", "medium", "high"
-	StartTime           time.Time       `json:"start_time"`
+	AdminsList          []string                    `json:"admins_list"`           // List of additional admin phone numbers / JIDs
+	ThinkingEffort      string                      `json:"thinking_effort"`       // "auto", "none", "low", "medium", "high"
+	ChatNicknames       map[string]map[string]string `json:"chat_nicknames"`       // chatID -> cleanPhone -> nickname
+	StartTime           time.Time                   `json:"start_time"`
 	filePath            string
 	mu                  sync.RWMutex
 }
@@ -39,6 +40,7 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 		AdminNumber:         adminNumber,
 		AdminsList:          make([]string, 0),
 		ThinkingEffort:      "auto",
+		ChatNicknames:       make(map[string]map[string]string),
 		StartTime:           time.Now(),
 		filePath:            settingsPath,
 	}
@@ -46,12 +48,13 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 	// Try reading existing settings
 	if data, err := os.ReadFile(settingsPath); err == nil {
 		var loaded struct {
-			IsShutdown          bool            `json:"is_shutdown"`
-			ChatLimits          map[string]int  `json:"chat_limits"`
-			AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"`
-			ActivePersona       int             `json:"active_persona"`
-			AdminsList          []string        `json:"admins_list"`
-			ThinkingEffort      string          `json:"thinking_effort"`
+			IsShutdown          bool                        `json:"is_shutdown"`
+			ChatLimits          map[string]int              `json:"chat_limits"`
+			AutoTriggersEnabled map[string]bool             `json:"auto_triggers_enabled"`
+			ActivePersona       int                         `json:"active_persona"`
+			AdminsList          []string                    `json:"admins_list"`
+			ThinkingEffort      string                      `json:"thinking_effort"`
+			ChatNicknames       map[string]map[string]string `json:"chat_nicknames"`
 		}
 		if err := json.Unmarshal(data, &loaded); err == nil {
 			st.IsShutdown = loaded.IsShutdown
@@ -69,6 +72,9 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 			}
 			if loaded.ThinkingEffort != "" {
 				st.ThinkingEffort = loaded.ThinkingEffort
+			}
+			if loaded.ChatNicknames != nil {
+				st.ChatNicknames = loaded.ChatNicknames
 			}
 		}
 	}
@@ -408,4 +414,88 @@ func (s *State) GetUptimeString() string {
 		return fmt.Sprintf("%d يوم و %d ساعة و %d دقيقة", days, hours, minutes)
 	}
 	return fmt.Sprintf("%d ساعة و %d دقيقة و %d ثانية", hours, minutes, seconds)
+}
+
+// SetChatNickname sets a custom calling nickname for a user specifically inside a chat.
+func (s *State) SetChatNickname(chatID, userPhoneOrJID, nickname string) error {
+	if s == nil {
+		return fmt.Errorf("admin state is nil")
+	}
+	phone := CleanPhoneNumber(userPhoneOrJID)
+	nickname = strings.TrimSpace(nickname)
+	if chatID == "" || phone == "" || nickname == "" {
+		return fmt.Errorf("بيانات غير مكتملة لتحديد اسم المناداة")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ChatNicknames == nil {
+		s.ChatNicknames = make(map[string]map[string]string)
+	}
+	if s.ChatNicknames[chatID] == nil {
+		s.ChatNicknames[chatID] = make(map[string]string)
+	}
+
+	s.ChatNicknames[chatID][phone] = nickname
+	return s.save()
+}
+
+// GetChatNickname returns custom calling nickname for a user in a specific chat, or empty string if none set.
+func (s *State) GetChatNickname(chatID, userPhoneOrJID string) string {
+	if s == nil {
+		return ""
+	}
+	phone := CleanPhoneNumber(userPhoneOrJID)
+	if chatID == "" || phone == "" {
+		return ""
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.ChatNicknames == nil || s.ChatNicknames[chatID] == nil {
+		return ""
+	}
+
+	// Direct match
+	if nick, exists := s.ChatNicknames[chatID][phone]; exists && nick != "" {
+		return nick
+	}
+
+	// Flexible phone matching (201... vs 01...)
+	for p, nick := range s.ChatNicknames[chatID] {
+		if MatchPhoneNumber(p, phone) && nick != "" {
+			return nick
+		}
+	}
+
+	return ""
+}
+
+// ClearChatNickname removes custom calling nickname for a user in a specific chat.
+func (s *State) ClearChatNickname(chatID, userPhoneOrJID string) error {
+	if s == nil {
+		return nil
+	}
+	phone := CleanPhoneNumber(userPhoneOrJID)
+	if chatID == "" || phone == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.ChatNicknames == nil || s.ChatNicknames[chatID] == nil {
+		return nil
+	}
+
+	delete(s.ChatNicknames[chatID], phone)
+	for p := range s.ChatNicknames[chatID] {
+		if MatchPhoneNumber(p, phone) {
+			delete(s.ChatNicknames[chatID], p)
+		}
+	}
+
+	return s.save()
 }

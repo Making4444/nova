@@ -18,6 +18,7 @@ import (
 	"novabot/internal/curriculum"
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
+	"novabot/internal/games"
 	"novabot/internal/memory"
 	"novabot/internal/scheduler"
 	"novabot/internal/storage"
@@ -236,6 +237,14 @@ func main() {
 		ttsClient := voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
 		eventHandler.SetTTSClient(ttsClient)
 	}
+
+	// 5.5 Initialize Interactive Games Engine
+	gameEngine := games.NewEngine("data", func(chatID, text, replyToMsgID string) error {
+		sendCtx, sendCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer sendCancel()
+		return eventHandler.SendMessage(sendCtx, chatID, text, replyToMsgID)
+	})
+	eventHandler.SetGameEngine(gameEngine)
 
 	// 6. Initialize Scheduler Engine & wire dependencies
 	schedulerEngine := scheduler.NewEngine(
