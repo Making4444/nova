@@ -47,6 +47,11 @@ type PersonaSwitcher interface {
 	SwitchPersona(mode int) (string, error)
 }
 
+// ThinkingController interface allows changing reasoning effort dynamically on the AI client.
+type ThinkingController interface {
+	SetThinkingEffort(effort string)
+}
+
 // HandleAdminCommand parses and executes admin and archive commands.
 func HandleAdminCommand(
 	state *State,
@@ -55,6 +60,7 @@ func HandleAdminCommand(
 	senderName string,
 	isFromMe bool,
 	text string,
+	repliedSender string,
 	stats StatsProvider,
 	archiver ChatArchiver,
 ) CommandResult {
@@ -82,7 +88,7 @@ func HandleAdminCommand(
 	}
 
 	switch cmd {
-	case "shutdown", "suhtdown", "قفل", "اغلاق", "إغلاق":
+	case "shutdown", "suhtdown", "stop":
 		if !isAdmin {
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
@@ -91,10 +97,10 @@ func HandleAdminCommand(
 		}
 		return CommandResult{
 			Handled:   true,
-			ReplyText: "🔴 *تم إغلاق السيرفرات مؤقتاً بنجاح!*\nعند مناداة نوفا، سيتم إرسال رسالة التوقف التلقائية فوراً وبدون استهلاك أي رصيد.",
+			ReplyText: "🔴 *تم إغلاق السيرفرات مؤقتاً بنجاح (Shutdown)!*\nعند مناداة نوفا، سيتم إرسال رسالة التوقف التلقائية فوراً وبدون استهلاك أي رصيد.",
 		}
 
-	case "start", "resume", "restart", "تشغيل", "فتح":
+	case "start", "resume", "restart":
 		if !isAdmin {
 			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
 		}
@@ -103,7 +109,168 @@ func HandleAdminCommand(
 		}
 		return CommandResult{
 			Handled:   true,
-			ReplyText: "🟢 *تم إعادة فتح وتشغيل السيرفرات بنجاح!*\nنوفا جاهزة الآن وتستقبل الرسائل وترد بشكل طبيعي.",
+			ReplyText: "🟢 *تم إعادة فتح وتشغيل السيرفرات بنجاح (Start)!*\nنوفا جاهزة الآن وتستقبل الرسائل وترد بشكل طبيعي.",
+		}
+
+	case "admin":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+		if len(parts) < 2 {
+			return CommandResult{
+				Handled: true,
+				ReplyText: "👑 *أوامر إدارة المشرفين (Admin Management):*\n\n" +
+					"• `/admin add` : لإضافة مشرف جديد (بالرد على رسالته أو كتابة رقمه مثل: `/admin add 2010xxxxxxxx`)\n" +
+					"• `/admin remove 2010xxxxxxxx` : لحذف مشرف من القائمة\n" +
+					"• `/admin list` : لعرض قائمة المشرفين المسجلين حالياً",
+			}
+		}
+
+		action := strings.ToLower(parts[1])
+		switch action {
+		case "add", "اضافة", "إضافة":
+			target := ""
+			if len(parts) >= 3 {
+				target = parts[2]
+			} else if repliedSender != "" {
+				target = repliedSender
+			}
+
+			if target == "" {
+				return CommandResult{
+					Handled: true,
+					ReplyText: "⚠️ يرجى تحديد المستخدم المراد إضافته:\n• إما بالرد (Reply) على رسالته وكتابة `/admin add`\n• أو بكتابة رقمه مباشرة: `/admin add 2010xxxxxxxx`",
+				}
+			}
+
+			addedNum, err := state.AddAdmin(target)
+			if err != nil {
+				return CommandResult{
+					Handled: true,
+					ReplyText: fmt.Sprintf("❌ فشل إضافة المشرف: %v", err),
+				}
+			}
+
+			return CommandResult{
+				Handled: true,
+				ReplyText: fmt.Sprintf("✅ *تم بنجاح إضافة المشرف الجديد!*\n📱 الرقم: `%s`\nأصبح لديه الآن كامل صلاحيات إدارة وتشغيل وإيقاف البوت.", addedNum),
+			}
+
+		case "remove", "delete", "del", "حذف":
+			target := ""
+			if len(parts) >= 3 {
+				target = parts[2]
+			} else if repliedSender != "" {
+				target = repliedSender
+			}
+
+			if target == "" {
+				return CommandResult{
+					Handled: true,
+					ReplyText: "⚠️ اكتب رقم المشرف المراد حذفه، مثلاً: `/admin remove 2010xxxxxxxx` أو بالرد على رسالته.",
+				}
+			}
+
+			removed, err := state.RemoveAdmin(target)
+			if err != nil {
+				return CommandResult{
+					Handled: true,
+					ReplyText: fmt.Sprintf("❌ فشل حذف المشرف: %v", err),
+				}
+			}
+			if !removed {
+				return CommandResult{
+					Handled: true,
+					ReplyText: "⚠️ هذا الرقم غير موجود في قائمة المشرفين المضافين.",
+				}
+			}
+
+			return CommandResult{
+				Handled: true,
+				ReplyText: fmt.Sprintf("🗑️ *تم حذف المشرف بنجاح من قائمة الإدارة.*"),
+			}
+
+		case "list", "قائمة", "عرض":
+			admins := state.GetAdminsList()
+			owner := state.GetAdminNumber()
+			var sb strings.Builder
+			sb.WriteString("👑 *قائمة مشرفي نوفا (Nova Admins):*\n\n")
+			sb.WriteString(fmt.Sprintf("⭐ *المالك الأساسي (Owner):* `%s`\n", owner))
+			if len(admins) == 0 {
+				sb.WriteString("\nلا يوجد مشرفين إضافيين مضافين حالياً.")
+			} else {
+				sb.WriteString("\n👥 *المشرفون الإضافيون (Admins):*\n")
+				for i, adm := range admins {
+					sb.WriteString(fmt.Sprintf("%d. `%s`\n", i+1, adm))
+				}
+			}
+			return CommandResult{
+				Handled: true,
+				ReplyText: sb.String(),
+			}
+
+		default:
+			return CommandResult{
+				Handled: true,
+				ReplyText: "⚠️ أمر غير معروف. اكتب `/admin` لعرض خيارات إدارة المشرفين.",
+			}
+		}
+
+	case "thinking", "reasoning", "تفكير":
+		if !isAdmin {
+			return CommandResult{Handled: true, ReplyText: "⚠️ هذا الأمر مخصص فقط لمشرف البوت (Admin)."}
+		}
+
+		currentEffort := "auto"
+		if state != nil {
+			currentEffort = state.GetThinkingEffort()
+		}
+
+		if len(parts) < 2 {
+			desc := "تلقائي وديناميكي (يفكر في المسائل والصور الصعبة فقط)"
+			switch currentEffort {
+			case "none":
+				desc = "ملغي تماماً (سرعة قصوى ورد فوري في ثانية)"
+			case "low":
+				desc = "خفيف وسريع (تفكير محدود)"
+			case "medium":
+				desc = "متوسط"
+			case "high":
+				desc = "عالي ومكثف (تحليل عميق)"
+			}
+
+			msg := fmt.Sprintf("🧠 *التحكم في تفكير الذكاء الاصطناعي (Reasoning Effort):*\n\n"+
+				"• *الوضع الحالي:* `%s` (%s)\n\n"+
+				"💡 *للتحكم في نمط التفكير اكتب:*\n"+
+				"• `/thinking auto` : تفكير تلقائي ذكي (حسب الحاجة والصعوبة)\n"+
+				"• `/thinking off` : إيقاف التفكير نهائياً (سرعة خارقة ورد فوري في ثانية)\n"+
+				"• `/thinking low` : تفكير خفيف وسريع\n"+
+				"• `/thinking high` : تفكير عميق جداً للمسائل الرياضية المعقدة", currentEffort, desc)
+
+			return CommandResult{Handled: true, ReplyText: msg}
+		}
+
+		targetEffort := parts[1]
+		if state != nil {
+			_ = state.SetThinkingEffort(targetEffort)
+		}
+		newEffort := state.GetThinkingEffort()
+		if tc, ok := archiver.(ThinkingController); ok {
+			tc.SetThinkingEffort(newEffort)
+		}
+
+		desc := "تلقائي وديناميكي"
+		if newEffort == "none" {
+			desc = "تم إلغاء التفكير تماماً (سرعة قصوى)"
+		} else if newEffort == "low" {
+			desc = "تفكير خفيف وسريع"
+		} else if newEffort == "high" {
+			desc = "تفكير عميق ومكثف"
+		}
+
+		return CommandResult{
+			Handled:   true,
+			ReplyText: fmt.Sprintf("✅ *تم بنجاح ضبط وضع تفكير النموذج على:* `%s`\n(%s)", newEffort, desc),
 		}
 
 	case "set", "ضبط":

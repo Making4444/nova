@@ -17,6 +17,8 @@ type State struct {
 	AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"` // chatID -> bool
 	ActivePersona       int             `json:"active_persona"`        // 1 = Bro/Default, 2 = Charming/Female
 	AdminNumber         string          `json:"admin_number"`          // e.g. "201202172699"
+	AdminsList          []string        `json:"admins_list"`           // List of additional admin phone numbers / JIDs
+	ThinkingEffort      string          `json:"thinking_effort"`       // "auto", "none", "low", "medium", "high"
 	StartTime           time.Time       `json:"start_time"`
 	filePath            string
 	mu                  sync.RWMutex
@@ -35,6 +37,8 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 		AutoTriggersEnabled: make(map[string]bool),
 		ActivePersona:       1,
 		AdminNumber:         adminNumber,
+		AdminsList:          make([]string, 0),
+		ThinkingEffort:      "auto",
 		StartTime:           time.Now(),
 		filePath:            settingsPath,
 	}
@@ -46,6 +50,8 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 			ChatLimits          map[string]int  `json:"chat_limits"`
 			AutoTriggersEnabled map[string]bool `json:"auto_triggers_enabled"`
 			ActivePersona       int             `json:"active_persona"`
+			AdminsList          []string        `json:"admins_list"`
+			ThinkingEffort      string          `json:"thinking_effort"`
 		}
 		if err := json.Unmarshal(data, &loaded); err == nil {
 			st.IsShutdown = loaded.IsShutdown
@@ -57,6 +63,12 @@ func NewState(dataDir string, adminNumber string) (*State, error) {
 			}
 			if loaded.ActivePersona >= 1 && loaded.ActivePersona <= 2 {
 				st.ActivePersona = loaded.ActivePersona
+			}
+			if loaded.AdminsList != nil {
+				st.AdminsList = loaded.AdminsList
+			}
+			if loaded.ThinkingEffort != "" {
+				st.ThinkingEffort = loaded.ThinkingEffort
 			}
 		}
 	}
@@ -121,7 +133,39 @@ func (s *State) GetPersona() int {
 	return s.ActivePersona
 }
 
-// IsAdmin checks if sender JID/Phone matches the admin number or if the message is from the owner.
+// CleanPhoneNumber strips WhatsApp suffixes, prefixes, spaces, and punctuation for consistent matching.
+func CleanPhoneNumber(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, "@s.whatsapp.net")
+	s = strings.TrimSuffix(s, "@c.us")
+	s = strings.TrimSuffix(s, "@lid")
+	s = strings.TrimPrefix(s, "+")
+	s = strings.TrimPrefix(s, "@")
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "-", "")
+	return s
+}
+
+// MatchPhoneNumber checks if two phone representations match (supporting Egyptian 201... vs 01...).
+func MatchPhoneNumber(a, b string) bool {
+	ca := CleanPhoneNumber(a)
+	cb := CleanPhoneNumber(b)
+	if ca == "" || cb == "" {
+		return false
+	}
+	if ca == cb {
+		return true
+	}
+	if len(ca) > 2 && strings.HasPrefix(ca, "20") && cb == "0"+ca[2:] {
+		return true
+	}
+	if len(cb) > 2 && strings.HasPrefix(cb, "20") && ca == "0"+cb[2:] {
+		return true
+	}
+	return false
+}
+
+// IsAdmin checks if sender JID/Phone matches the primary owner or any registered admin in AdminsList.
 func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool {
 	if isFromMe {
 		return true
@@ -129,35 +173,142 @@ func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool 
 	if s == nil {
 		return false
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	adminNum := s.GetAdminNumber()
+	cleanSender := CleanPhoneNumber(senderID)
 
-	cleanSender := strings.TrimSuffix(senderID, "@s.whatsapp.net")
-	cleanSender = strings.TrimSuffix(cleanSender, "@c.us")
-	cleanSender = strings.TrimSuffix(cleanSender, "@lid")
-	cleanSender = strings.TrimPrefix(cleanSender, "+")
-	cleanSender = strings.TrimSpace(cleanSender)
-
-	cleanAdmin := strings.TrimPrefix(adminNum, "+")
-	cleanAdmin = strings.TrimSpace(cleanAdmin)
-
-	// Direct match or 01... vs 201... match
-	if cleanSender == cleanAdmin && cleanAdmin != "" {
-		return true
-	}
-	if len(cleanAdmin) > 2 && strings.HasPrefix(cleanAdmin, "20") && cleanSender == "0"+cleanAdmin[2:] {
-		return true
-	}
-	if len(cleanSender) > 2 && strings.HasPrefix(cleanSender, "20") && cleanAdmin == "0"+cleanSender[2:] {
+	// 1. Primary Owner check
+	if MatchPhoneNumber(cleanSender, s.AdminNumber) {
 		return true
 	}
 
-	// Match by known admin LID or phone number
-	if strings.Contains(senderID, "105012604760193") || (cleanAdmin != "" && strings.Contains(senderID, cleanAdmin)) {
+	// Match by known owner LID or direct sub-match
+	if strings.Contains(senderID, "105012604760193") || (s.AdminNumber != "" && strings.Contains(senderID, CleanPhoneNumber(s.AdminNumber))) {
 		return true
+	}
+
+	// 2. Added Admins List check
+	for _, adminNum := range s.AdminsList {
+		if MatchPhoneNumber(cleanSender, adminNum) || (adminNum != "" && strings.Contains(senderID, CleanPhoneNumber(adminNum))) {
+			return true
+		}
 	}
 
 	return false
+}
+
+// AddAdmin adds a new admin phone number to the persistent admin list.
+func (s *State) AddAdmin(number string) (string, error) {
+	if s == nil {
+		return "", fmt.Errorf("admin state is nil")
+	}
+	cleaned := CleanPhoneNumber(number)
+	if cleaned == "" {
+		return "", fmt.Errorf("رقم هاتف غير صالح")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if already the owner
+	if MatchPhoneNumber(cleaned, s.AdminNumber) {
+		return cleaned, nil
+	}
+
+	// Check if already in list
+	for _, existing := range s.AdminsList {
+		if MatchPhoneNumber(cleaned, existing) {
+			return cleaned, nil
+		}
+	}
+
+	s.AdminsList = append(s.AdminsList, cleaned)
+	return cleaned, s.save()
+}
+
+// RemoveAdmin removes an admin phone number from the persistent list.
+func (s *State) RemoveAdmin(number string) (bool, error) {
+	if s == nil {
+		return false, fmt.Errorf("admin state is nil")
+	}
+	cleaned := CleanPhoneNumber(number)
+	if cleaned == "" {
+		return false, fmt.Errorf("رقم هاتف غير صالح")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Do not allow removing the primary owner
+	if MatchPhoneNumber(cleaned, s.AdminNumber) {
+		return false, fmt.Errorf("لا يمكن حذف المالك الأساسي للبوت")
+	}
+
+	newList := make([]string, 0, len(s.AdminsList))
+	found := false
+	for _, existing := range s.AdminsList {
+		if MatchPhoneNumber(cleaned, existing) {
+			found = true
+			continue
+		}
+		newList = append(newList, existing)
+	}
+
+	if found {
+		s.AdminsList = newList
+		return true, s.save()
+	}
+
+	return false, nil
+}
+
+// GetAdminsList returns a copy of registered admin numbers.
+func (s *State) GetAdminsList() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]string, len(s.AdminsList))
+	copy(res, s.AdminsList)
+	return res
+}
+
+// SetThinkingEffort sets the reasoning effort level ("auto", "none", "low", "medium", "high").
+func (s *State) SetThinkingEffort(effort string) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	switch effort {
+	case "none", "off", "0", "disabled":
+		s.ThinkingEffort = "none"
+	case "low", "1":
+		s.ThinkingEffort = "low"
+	case "medium", "2":
+		s.ThinkingEffort = "medium"
+	case "high", "3":
+		s.ThinkingEffort = "high"
+	default:
+		s.ThinkingEffort = "auto"
+	}
+	return s.save()
+}
+
+// GetThinkingEffort returns the current reasoning effort level.
+func (s *State) GetThinkingEffort() string {
+	if s == nil {
+		return "auto"
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.ThinkingEffort == "" {
+		return "auto"
+	}
+	return s.ThinkingEffort
 }
 
 // SetShutdown toggles or sets the shutdown mode.

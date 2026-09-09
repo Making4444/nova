@@ -42,6 +42,7 @@ type OpenRouterClient struct {
 	modelVision         string
 	modelSummarizer     string
 	maxTokens           int
+	thinkingEffort      string
 	groqRouter          *GroqRouter
 	systemPrompt        string
 	searchEngine        *SearchEngine
@@ -84,6 +85,7 @@ func NewMultiModelClient(
 		modelVision:     modelVision,
 		modelSummarizer: modelSummarizer,
 		maxTokens:       4096,
+		thinkingEffort:  "auto",
 		groqRouter:      groqRouter,
 		systemPrompt:    systemPrompt,
 		searchEngine:    NewSearchEngine(apiKey, "perplexity/sonar"),
@@ -111,6 +113,35 @@ func (c *OpenRouterClient) GetMaxTokens() int {
 		return 4096
 	}
 	return c.maxTokens
+}
+
+// SetThinkingEffort sets the reasoning effort level ("auto", "none", "low", "medium", "high").
+func (c *OpenRouterClient) SetThinkingEffort(effort string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	switch effort {
+	case "none", "off", "0", "disabled":
+		c.thinkingEffort = "none"
+	case "low", "1":
+		c.thinkingEffort = "low"
+	case "medium", "2":
+		c.thinkingEffort = "medium"
+	case "high", "3":
+		c.thinkingEffort = "high"
+	default:
+		c.thinkingEffort = "auto"
+	}
+}
+
+// GetThinkingEffort returns the current reasoning effort level.
+func (c *OpenRouterClient) GetThinkingEffort() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.thinkingEffort == "" {
+		return "auto"
+	}
+	return c.thinkingEffort
 }
 
 // NewOpenRouterClient creates a backwards-compatible client.
@@ -439,11 +470,16 @@ var readCurriculumLessonTool = toolDefinition{
 	},
 }
 
+type openRouterReasoning struct {
+	Effort string `json:"effort,omitempty"`
+}
+
 type openRouterRequest struct {
-	Model     string              `json:"model"`
-	Messages  []openRouterMessage `json:"messages"`
-	Tools     []toolDefinition    `json:"tools,omitempty"`
-	MaxTokens int                 `json:"max_tokens,omitempty"`
+	Model     string               `json:"model"`
+	Messages  []openRouterMessage  `json:"messages"`
+	Tools     []toolDefinition     `json:"tools,omitempty"`
+	MaxTokens int                  `json:"max_tokens,omitempty"`
+	Reasoning *openRouterReasoning `json:"reasoning,omitempty"`
 }
 
 type openRouterChoice struct {
@@ -1113,11 +1149,19 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 	if maxTokens <= 0 {
 		maxTokens = c.GetMaxTokens()
 	}
+
+	var reasoningObj *openRouterReasoning
+	effort := c.GetThinkingEffort()
+	if effort != "" && effort != "auto" {
+		reasoningObj = &openRouterReasoning{Effort: effort}
+	}
+
 	reqBody := openRouterRequest{
 		Model:     model,
 		Messages:  messages,
 		Tools:     tools,
 		MaxTokens: maxTokens,
+		Reasoning: reasoningObj,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

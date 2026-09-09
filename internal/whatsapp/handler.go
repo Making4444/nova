@@ -110,6 +110,13 @@ func (h *EventHandler) SetStatsProvider(stats admin.StatsProvider) {
 	h.statsProvider = stats
 }
 
+// SetThinkingEffort updates reasoning effort on the AI client.
+func (h *EventHandler) SetThinkingEffort(effort string) {
+	if h.aiClient != nil {
+		h.aiClient.SetThinkingEffort(effort)
+	}
+}
+
 // ArchiveChatSession summarizes and archives the current chat, updating user profiles.
 func (h *EventHandler) ArchiveChatSession(ctx context.Context, chatType, chatID string) (string, int, error) {
 	transcript, msgs, err := h.chatLogger.GetAllMessages(chatType, chatID)
@@ -338,7 +345,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// 3. Command Check (Admin Commands & Archiving)
 	if h.adminState != nil {
-		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, cleanText, h.statsProvider, h)
+		cmdRes := admin.HandleAdminCommand(h.adminState, chatID, senderID, senderName, evt.Info.IsFromMe, cleanText, repliedSender, h.statsProvider, h)
 		if cmdRes.Handled {
 			h.logger.Infof("Command executed by %s (%s): %s", senderName, senderID, cleanText)
 			fmt.Printf("\n[👑 Command Executed] %s (%s) executed %q in chat %s\n", senderName, senderID, cleanText, chatID)

@@ -67,7 +67,7 @@ func TestAdminCommands(t *testing.T) {
 	nonAdminSender := "201099999999@s.whatsapp.net"
 
 	// 0. Non-admin security rejection check
-	resNonAdmin := HandleAdminCommand(state, chatID, nonAdminSender, "Attacker", false, "/shutdown", stats, archiver)
+	resNonAdmin := HandleAdminCommand(state, chatID, nonAdminSender, "Attacker", false, "/shutdown", "", stats, archiver)
 	if !resNonAdmin.Handled || !strings.Contains(resNonAdmin.ReplyText, "مخصص فقط لمشرف") {
 		t.Errorf("expected non-admin to be blocked, got: %s", resNonAdmin.ReplyText)
 	}
@@ -75,8 +75,18 @@ func TestAdminCommands(t *testing.T) {
 		t.Errorf("shutdown should not have been triggered by non-admin")
 	}
 
+	// 0.5. Arabic open/close removal verification
+	resArabicClose := HandleAdminCommand(state, chatID, adminSender, "Making", true, "اغلاق", "", stats, archiver)
+	if resArabicClose.Handled {
+		t.Errorf("expected Arabic 'اغلاق' to NOT be handled as an admin command")
+	}
+	resArabicOpen := HandleAdminCommand(state, chatID, adminSender, "Making", true, "فتح", "", stats, archiver)
+	if resArabicOpen.Handled {
+		t.Errorf("expected Arabic 'فتح' to NOT be handled as an admin command")
+	}
+
 	// 1. /shutdown test by admin
-	res := HandleAdminCommand(state, chatID, adminSender, "Making", true, "\u200e/shutdown", stats, archiver)
+	res := HandleAdminCommand(state, chatID, adminSender, "Making", true, "\u200e/shutdown", "", stats, archiver)
 	if !res.Handled || !state.GetShutdown() {
 		t.Errorf("expected /shutdown to set shutdown mode")
 	}
@@ -85,73 +95,122 @@ func TestAdminCommands(t *testing.T) {
 	}
 
 	// 2. /start test by admin
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/start", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/start", "", stats, archiver)
 	if !res.Handled || state.GetShutdown() {
 		t.Errorf("expected /start to reset shutdown mode")
 	}
 
 	// 3. /set test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set 500", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set 500", "", stats, archiver)
 	if !res.Handled || state.GetChatLimit(chatID, 0) != 500 {
 		t.Errorf("expected chat limit 500, got %d", state.GetChatLimit(chatID, 0))
 	}
 
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set all", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/set all", "", stats, archiver)
 	if !res.Handled || state.GetChatLimit(chatID, 100) != 0 {
 		t.Errorf("expected chat limit 0 (all), got %d", state.GetChatLimit(chatID, 100))
 	}
 
 	// 4. /auto test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto on", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto on", "", stats, archiver)
 	if !res.Handled || !state.IsAutoTriggersEnabled(chatID) {
 		t.Errorf("expected auto triggers enabled")
 	}
 
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto off", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/auto off", "", stats, archiver)
 	if !res.Handled || state.IsAutoTriggersEnabled(chatID) {
 		t.Errorf("expected auto triggers disabled")
 	}
 
 	// 5. /archive test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/archive", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/archive", "", stats, archiver)
 	if !res.Handled || !archiver.archivedCalled || !strings.Contains(res.ReplyText, "تمت أرشفة وتلخيص") {
 		t.Errorf("expected archive command success, got: %s", res.ReplyText)
 	}
 
 	// 6. /archive list test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/archive list", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/archive list", "", stats, archiver)
 	if !res.Handled || !strings.Contains(res.ReplyText, "رقم 1") {
 		t.Errorf("expected archive list output, got: %s", res.ReplyText)
 	}
 
 	// 7. /restore test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/restore 1", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/restore 1", "", stats, archiver)
 	if !res.Handled || archiver.restoreIndex != 1 || !strings.Contains(res.ReplyText, "استرجاع المحادثة") {
 		t.Errorf("expected restore success, got: %s", res.ReplyText)
 	}
 
 	// 8. /status test (with invisible LTR mark \u200e)
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "\u200e/status", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "\u200e/status", "", stats, archiver)
 	if !res.Handled || !strings.Contains(res.ReplyText, "Nova Status") {
 		t.Errorf("expected status output, got: %s", res.ReplyText)
 	}
 
 	// 9. /persona info test
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona", "", stats, archiver)
 	if !res.Handled || !strings.Contains(res.ReplyText, "أنماط شخصية نوفا") {
 		t.Errorf("expected persona help text, got: %s", res.ReplyText)
 	}
 
 	// 10. /persona 2 switch test (Charming/Female)
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 2", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 2", "", stats, archiver)
 	if !res.Handled || state.GetPersona() != 2 || archiver.personaSwitched != 2 || !strings.Contains(res.ReplyText, "النمط 2") {
 		t.Errorf("expected switch to persona 2, got: %s", res.ReplyText)
 	}
 
 	// 11. /persona 1 switch back test (Bro/Default)
-	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 1", stats, archiver)
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/persona 1", "", stats, archiver)
 	if !res.Handled || state.GetPersona() != 1 || archiver.personaSwitched != 1 || !strings.Contains(res.ReplyText, "النمط 1") {
 		t.Errorf("expected switch to persona 1, got: %s", res.ReplyText)
 	}
+
+	// 12. /admin add by reply test
+	newAdminPhone := "201012345678"
+	newAdminJID := "201012345678@s.whatsapp.net"
+	res = HandleAdminCommand(state, chatID, adminSender, "Making", true, "/admin add", newAdminJID, stats, archiver)
+	if !res.Handled || !strings.Contains(res.ReplyText, "تم بنجاح إضافة المشرف") {
+		t.Errorf("expected successful admin add by reply, got: %s", res.ReplyText)
+	}
+	if !state.IsAdmin(newAdminJID, "New Admin", false) {
+		t.Errorf("expected new admin to be recognized by IsAdmin")
+	}
+
+	// Verify newly added admin can run admin commands
+	resNewAdmin := HandleAdminCommand(state, chatID, newAdminJID, "New Admin", false, "/status", "", stats, archiver)
+	if !resNewAdmin.Handled || !strings.Contains(resNewAdmin.ReplyText, "Nova Status") {
+		t.Errorf("expected newly added admin to run /status, got: %s", resNewAdmin.ReplyText)
+	}
+
+	// 13. /admin list test
+	resList := HandleAdminCommand(state, chatID, adminSender, "Making", true, "/admin list", "", stats, archiver)
+	if !resList.Handled || !strings.Contains(resList.ReplyText, newAdminPhone) {
+		t.Errorf("expected /admin list to include %s, got: %s", newAdminPhone, resList.ReplyText)
+	}
+
+	// 14. /admin remove test
+	resRemove := HandleAdminCommand(state, chatID, adminSender, "Making", true, "/admin remove "+newAdminPhone, "", stats, archiver)
+	if !resRemove.Handled || !strings.Contains(resRemove.ReplyText, "تم حذف المشرف بنجاح") {
+		t.Errorf("expected /admin remove to succeed, got: %s", resRemove.ReplyText)
+	}
+	if state.IsAdmin(newAdminJID, "Former Admin", false) {
+		t.Errorf("expected removed admin to lose admin privileges")
+	}
+
+	// 15. /thinking command test
+	resThinkingInfo := HandleAdminCommand(state, chatID, adminSender, "Making", true, "/thinking", "", stats, archiver)
+	if !resThinkingInfo.Handled || !strings.Contains(resThinkingInfo.ReplyText, "Reasoning Effort") {
+		t.Errorf("expected /thinking help text, got: %s", resThinkingInfo.ReplyText)
+	}
+
+	resThinkingOff := HandleAdminCommand(state, chatID, adminSender, "Making", true, "/thinking off", "", stats, archiver)
+	if !resThinkingOff.Handled || state.GetThinkingEffort() != "none" {
+		t.Errorf("expected thinking effort to be 'none', got: %s", state.GetThinkingEffort())
+	}
+
+	resThinkingAuto := HandleAdminCommand(state, chatID, adminSender, "Making", true, "/thinking auto", "", stats, archiver)
+	if !resThinkingAuto.Handled || state.GetThinkingEffort() != "auto" {
+		t.Errorf("expected thinking effort to be 'auto', got: %s", state.GetThinkingEffort())
+	}
 }
+
 

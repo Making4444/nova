@@ -1,4 +1,4 @@
-﻿package ai
+package ai
 
 import (
 	"strings"
@@ -178,3 +178,31 @@ func TestTokenLimits(t *testing.T) {
 		t.Errorf("expected maxTokens to remain 6000 after invalid update, got %d", client.GetMaxTokens())
 	}
 }
+
+func TestThinkingEffort(t *testing.T) {
+	client := NewOpenRouterClient("fake-key", "model-chat", "أنت نوفا.")
+	if client.GetThinkingEffort() != "auto" {
+		t.Errorf("expected default thinkingEffort 'auto', got %s", client.GetThinkingEffort())
+	}
+
+	client.SetThinkingEffort("none")
+	if client.GetThinkingEffort() != "none" {
+		t.Errorf("expected thinkingEffort 'none', got %s", client.GetThinkingEffort())
+	}
+
+	client.SetThinkingEffort("off")
+	if client.GetThinkingEffort() != "none" {
+		t.Errorf("expected 'off' to map to 'none', got %s", client.GetThinkingEffort())
+	}
+
+	client.SetThinkingEffort("high")
+	if client.GetThinkingEffort() != "high" {
+		t.Errorf("expected thinkingEffort 'high', got %s", client.GetThinkingEffort())
+	}
+
+	client.SetThinkingEffort("auto")
+	if client.GetThinkingEffort() != "auto" {
+		t.Errorf("expected thinkingEffort 'auto', got %s", client.GetThinkingEffort())
+	}
+}
+

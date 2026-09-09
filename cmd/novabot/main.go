@@ -195,6 +195,9 @@ func main() {
 		initialPrompt,
 	)
 	aiClient.SetMaxTokens(cfg.MaxTokens)
+	if adminState != nil {
+		aiClient.SetThinkingEffort(adminState.GetThinkingEffort())
+	}
 	aiClient.SetMemoryUpdater(memStore)
 	curriculumService := curriculum.NewService("data/curriculum", "config/curriculum")
 	aiClient.SetCurriculumService(curriculumService)
