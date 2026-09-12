@@ -1,10 +1,12 @@
 package games
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -51,6 +53,8 @@ func (bm *BankManager) LoadAll() {
 			if err != nil {
 				continue
 			}
+
+			data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 
 			var qs []Question
 			if err := json.Unmarshal(data, &qs); err != nil {
@@ -109,19 +113,42 @@ func (bm *BankManager) Summary() string {
 	bm.mu.RLock()
 	defer bm.mu.RUnlock()
 
-	return fmt.Sprintf("الإجمالي: %d سؤال (مسيحية: %d، إفيهات: %d، سينما: %d، كورة: %d، أمثال: %d، ثقافة: %d، ألغاز: %d، علوم: %d، تاريخ: %d، كرتون: %d)",
-		len(bm.allQuestions),
-		len(bm.categories[CategoryChristian]),
-		len(bm.categories[CategoryQuote]),
-		len(bm.categories[CategoryMovie]),
-		len(bm.categories[CategoryFootball]),
-		len(bm.categories[CategoryProverb]),
-		len(bm.categories[CategoryTrivia]),
-		len(bm.categories[CategoryRiddle]),
-		len(bm.categories[CategoryScience]),
-		len(bm.categories[CategoryHistory]),
-		len(bm.categories[CategoryCartoon]),
-	)
+	var parts []string
+	order := []Category{
+		CategoryChristian, CategoryQuote, CategoryMovie, CategoryFootball,
+		CategorySports, CategoryTech, CategoryScience, CategorySpace,
+		CategoryGeography, CategoryHistory, CategoryAnimals, CategoryFood,
+		CategoryProverb, CategoryRiddle, CategoryTrivia, CategoryCartoon,
+	}
+	catNames := map[Category]string{
+		CategoryChristian: "مسيحية",
+		CategoryQuote:     "إفيهات",
+		CategoryMovie:     "سينما",
+		CategoryFootball:  "كورة",
+		CategorySports:    "رياضات",
+		CategoryTech:      "تكنولوجيا",
+		CategoryScience:   "علوم",
+		CategorySpace:     "فضاء",
+		CategoryGeography: "جغرافيا",
+		CategoryHistory:   "تاريخ",
+		CategoryAnimals:   "حيوانات",
+		CategoryFood:      "أكلات",
+		CategoryProverb:   "أمثال",
+		CategoryRiddle:    "ألغاز",
+		CategoryTrivia:    "ثقافة",
+		CategoryCartoon:   "كرتون",
+	}
+
+	for _, cat := range order {
+		if count := len(bm.categories[cat]); count > 0 {
+			parts = append(parts, fmt.Sprintf("%s: %d", catNames[cat], count))
+		}
+	}
+
+	if len(parts) == 0 {
+		return fmt.Sprintf("الإجمالي: %d سؤال", len(bm.allQuestions))
+	}
+	return fmt.Sprintf("الإجمالي: %d سؤال (%s)", len(bm.allQuestions), strings.Join(parts, "، "))
 }
 
 // FallbackQuestions guarantees the engine runs smoothly in unit tests or fresh checkouts.

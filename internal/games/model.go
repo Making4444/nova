@@ -16,7 +16,13 @@ const (
 	CategoryTrivia    Category = "trivia"    // معلومات عامة وثقافة وجغرافيا
 	CategoryRiddle    Category = "riddle"    // فوازير وألغاز ذكاء مصرية
 	CategoryProverb   Category = "proverb"   // أمثال شعبية (كمّل المثل)
-	CategoryScience   Category = "science"   // علوم وتكنولوجيا وطبيعة وفضاء
+	CategoryScience   Category = "science"   // علوم طبيعية وفيزياء وكيمياء وأحياء وطب
+	CategoryTech      Category = "tech"      // تكنولوجيا وكمبيوتر وبرمجة وهواتف
+	CategorySpace     Category = "space"     // فضاء وفلك وكواكب ونجوم
+	CategoryGeography Category = "geography" // جغرافيا ودول وعواصم وتضاريس
+	CategoryAnimals   Category = "animals"   // عالم الحيوان والطيور والبحار
+	CategoryFood      Category = "food"      // أكلات ومطابخ وتوابل
+	CategorySports    Category = "sports"    // رياضات عامة وأولمبياد وتنس وسلة
 	CategoryHistory   Category = "history"   // تاريخ وحضارات وشخصيات تاريخية
 	CategoryCartoon   Category = "cartoon"   // كرتون وأنمي وسبيستون وديزني
 	CategoryMixed     Category = "mixed"     // تشكيلة كوكتيل منوعة من كل الأقسام

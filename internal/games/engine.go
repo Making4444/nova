@@ -70,7 +70,7 @@ func ParseCategory(input string) Category {
 		return CategoryQuote
 	case "movie", "movies", "افلام", "أفلام", "سينما":
 		return CategoryMovie
-	case "football", "ball", "كورة", "كوره", "رياضة", "رياضه":
+	case "football", "ball", "كورة", "كوره", "قدم", "كرة_قدم", "كرة قدم":
 		return CategoryFootball
 	case "proverb", "proverbs", "امثال", "أمثال", "مثل":
 		return CategoryProverb
@@ -78,8 +78,20 @@ func ParseCategory(input string) Category {
 		return CategoryTrivia
 	case "riddle", "riddles", "فوازير", "فزورة", "فزوره", "لغز", "الغاز", "ألغاز":
 		return CategoryRiddle
-	case "science", "tech", "علوم", "تكنولوجيا", "فضاء":
+	case "science", "علوم", "فيزياء", "كيمياء", "احياء", "طب":
 		return CategoryScience
+	case "tech", "تكنولوجيا", "تقنية", "كمبيوتر", "برمجة":
+		return CategoryTech
+	case "space", "فضاء", "فلك", "كواكب":
+		return CategorySpace
+	case "geography", "جغرافيا", "عواصم", "بلدان", "دول":
+		return CategoryGeography
+	case "animals", "حيوانات", "حيوان", "طيور", "اسماك":
+		return CategoryAnimals
+	case "food", "cooking", "طعام", "اكل", "أكل", "طبخ", "مطبخ":
+		return CategoryFood
+	case "sports", "sport", "رياضة", "رياضه", "رياضات", "اولمبياد", "أولمبياد", "العاب_قوى", "ألعاب قوى":
+		return CategorySports
 	case "history", "تاريخ", "فراعنة", "فراعنه":
 		return CategoryHistory
 	case "cartoon", "anime", "كرتون", "انمي", "أنمي", "سبيستون", "ديزني":
@@ -92,7 +104,7 @@ func ParseCategory(input string) Category {
 // StartGame begins a new competition round in the chat with zero repetition.
 func (e *Engine) StartGame(chatID string, requestedCategory string) (string, error) {
 	if chatID == "" {
-		return "", fmt.Errorf("invalid chatID")
+		return "❌ المعرف غير صالح لبدء اللعبة.", nil
 	}
 
 	e.mu.Lock()
@@ -141,7 +153,9 @@ func (e *Engine) StartGame(chatID string, requestedCategory string) (string, err
 	case CategoryMovie:
 		catTitle = "🎬 *مسابقة السينما والأفلام والفنون مع نوفا* 🎥"
 	case CategoryFootball:
-		catTitle = "⚽ *تحدي الكورة والرياضة مع نوفا* 🏆"
+		catTitle = "⚽ *تحدي كرة القدم والساحرة المستديرة مع نوفا* 🏆"
+	case CategorySports:
+		catTitle = "🏅 *تحدي الرياضات والألعاب الأولمبية مع نوفا* 🥊"
 	case CategoryProverb:
 		catTitle = "📜 *مسابقة كمّل المثل الشعبي المصري مع نوفا* 🪕"
 	case CategoryTrivia:
@@ -149,7 +163,17 @@ func (e *Engine) StartGame(chatID string, requestedCategory string) (string, err
 	case CategoryRiddle:
 		catTitle = "🧩 *فوازير وألغاز ذكاء مصرية مع نوفا* 💡"
 	case CategoryScience:
-		catTitle = "🔬 *تحدي العلوم والتكنولوجيا والفضاء مع نوفا* 🚀"
+		catTitle = "🔬 *تحدي العلوم والفيزياء والكيمياء والأحياء مع نوفا* 🧪"
+	case CategoryTech:
+		catTitle = "💻 *تحدي التكنولوجيا والبرمجة والذكاء الاصطناعي مع نوفا* 🤖"
+	case CategorySpace:
+		catTitle = "🪐 *تحدي الفضاء وعلم الفلك والكواكب مع نوفا* 🚀"
+	case CategoryGeography:
+		catTitle = "🗺️ *تحدي الجغرافيا والدول والعواصم مع نوفا* 🌍"
+	case CategoryAnimals:
+		catTitle = "🦁 *تحدي عالم الحيوان والطيور والكائنات مع نوفا* 🐾"
+	case CategoryFood:
+		catTitle = "🍳 *تحدي الأكلات والمطابخ والوصفات مع نوفا* 🍕"
 	case CategoryHistory:
 		catTitle = "🏛️ *تحدي التاريخ والحضارات والشخصيات مع نوفا* 📜"
 	case CategoryCartoon:
@@ -468,17 +492,23 @@ func (e *Engine) ResetConfig(chatID string) string {
 
 // GetHelpText returns the categories and commands list.
 func (e *Engine) GetHelpText() string {
-	return "🎮 *دليل أقسام مسابقات نوفا التفاعلية (500 سؤال):*\n\n" +
+	return "🎮 *دليل أقسام مسابقات نوفا التفاعلية:*\n\n" +
 		"• `/game christian` أو `/game مسيحي` : مسابقة الكتاب المقدس والتاريخ الكنسي ✝️\n" +
 		"• `/game quote` أو `/game افيهات` : مسابقة أشهر الإفيهات والمسرحيات المصرية 🎭\n" +
-		"• `/game movie` أو `/game سينما` : مسابقة الأفلام والفنون والممثلين 🎬\n" +
-		"• `/game ball` أو `/game كورة` : مسابقة كورة القدم المحلية والعالمية ⚽\n" +
+		"• `/game movie` أو `/game سينما` : مسابقة الأفلام والفنون والمسلسلات 🎬\n" +
+		"• `/game ball` أو `/game كورة` : مسابقة كرة القدم المحلية والعالمية ⚽\n" +
+		"• `/game sports` أو `/game رياضة` : مسابقة الرياضات والألعاب الأولمبية 🏅\n" +
+		"• `/game tech` أو `/game تكنولوجيا` : مسابقة التكنولوجيا والبرمجة والذكاء الاصطناعي 💻\n" +
+		"• `/game science` أو `/game علوم` : مسابقة العلوم الطبيعية والفيزياء والكيمياء 🔬\n" +
+		"• `/game space` أو `/game فضاء` : مسابقة الفضاء والكواكب وعلم الفلك 🪐\n" +
+		"• `/game geography` أو `/game جغرافيا` : مسابقة الجغرافيا والدول والعواصم 🗺️\n" +
+		"• `/game history` أو `/game تاريخ` : مسابقة التاريخ والحضارات والفراعنة 🏛️\n" +
+		"• `/game animals` أو `/game حيوانات` : مسابقة عالم الحيوان والطيور والبحار 🦁\n" +
+		"• `/game food` أو `/game اكل` : مسابقة الأكلات والمطابخ والوصفات 🍳\n" +
 		"• `/game amthal` أو `/game امثال` : مسابقة كمّل المثل الشعبي المصري 📜\n" +
-		"• `/game trivia` أو `/game عامة` : مسابقة ثقافة عامة، جغرافيا، وعواصم 🧠\n" +
-		"• `/game riddle` أو `/game فوازير` : مسابقة فوازير وألغاز ذكاء 🧩\n" +
-		"• `/game science` أو `/game علوم` : مسابقة علوم وتكنولوجيا وفضاء 🔬\n" +
-		"• `/game history` أو `/game تاريخ` : مسابقة تاريخ وحضارات وفراعنة 🏛️\n" +
-		"• `/game cartoon` أو `/game كرتون` : مسابقة كرتون وأنمي وسبيستون وديزني 🎨\n" +
+		"• `/game riddle` أو `/game فوازير` : مسابقة فوازير وألغاز ذكاء مصرية 🧩\n" +
+		"• `/game trivia` أو `/game عامة` : مسابقة معلومات عامة وثقافة منوعة 🧠\n" +
+		"• `/game cartoon` أو `/game كرتون` : مسابقة كرتون وأنمي وسبيستون 🎨\n" +
 		"• `/game` أو `/game كوكتيل` : تشكيلة عشوائية منوعة من كل الأقسام! 🌟\n\n" +
 		"⚙️ *التحكم والإعدادات:*\n" +
 		"• `/game stop` : إيقاف المسابقة الحالية 🛑\n" +
