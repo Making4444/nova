@@ -9,10 +9,17 @@ import (
 type Category string
 
 const (
-	CategoryMovie  Category = "movie"  // سينما وإفيهات مصرية
-	CategoryTrivia Category = "trivia" // معلومات عامة، كورة، ثقافة
-	CategoryRiddle Category = "riddle" // فوازير وألغاز ذكاء
-	CategoryMixed  Category = "mixed"  // تشكيلة كوكتيل منوعة
+	CategoryChristian Category = "christian" // مسيحية، كتاب مقدس، تاريخ كنسي
+	CategoryQuote     Category = "quote"     // إفيهات ومسرحيات وسينما مصرية
+	CategoryMovie     Category = "movie"     // أفلام ومسلسلات وفنون
+	CategoryFootball  Category = "football"  // كورة ورياضة محلية وعالمية
+	CategoryTrivia    Category = "trivia"    // معلومات عامة وثقافة وجغرافيا
+	CategoryRiddle    Category = "riddle"    // فوازير وألغاز ذكاء مصرية
+	CategoryProverb   Category = "proverb"   // أمثال شعبية (كمّل المثل)
+	CategoryScience   Category = "science"   // علوم وتكنولوجيا وطبيعة وفضاء
+	CategoryHistory   Category = "history"   // تاريخ وحضارات وشخصيات تاريخية
+	CategoryCartoon   Category = "cartoon"   // كرتون وأنمي وسبيستون وديزني
+	CategoryMixed     Category = "mixed"     // تشكيلة كوكتيل منوعة من كل الأقسام
 )
 
 // Question represents a single competition question with acceptable answer variants.
@@ -40,6 +47,22 @@ type Leaderboard struct {
 	Scores map[string]*PlayerScore `json:"scores"`
 }
 
+// ChatGameConfig holds configurable game preferences per chat.
+type ChatGameConfig struct {
+	RoundCount         int `json:"round_count"`           // Number of questions per round (default 5, min 1, max 30)
+	QuestionTimeoutSec int `json:"question_timeout_sec"`  // Duration per question in seconds (default 45, min 10, max 180)
+	SpeedBonusSec      int `json:"speed_bonus_sec"`       // Seconds threshold for 2-point speed bonus (default 10)
+}
+
+// DefaultGameConfig returns sensible default game parameters.
+func DefaultGameConfig() ChatGameConfig {
+	return ChatGameConfig{
+		RoundCount:         5,
+		QuestionTimeoutSec: 45,
+		SpeedBonusSec:      10,
+	}
+}
+
 // ActiveGame represents an ongoing competition session in a chat.
 type ActiveGame struct {
 	ChatID            string
@@ -50,6 +73,7 @@ type ActiveGame struct {
 	Timer             *time.Timer
 	RoundScores       map[string]int    // userID -> points gained in current session
 	RoundUserNames    map[string]string // userID -> last known display name
+	Config            ChatGameConfig
 	Stopped           bool
 	Mu                sync.Mutex
 }

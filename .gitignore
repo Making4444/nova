@@ -4,7 +4,10 @@
 !.env.example
 
 # Runtime data & session files
-data/
+data/*
+!data/games/
+data/games/*
+!data/games/questions/
 *.db
 *.db-shm
 *.db-wal

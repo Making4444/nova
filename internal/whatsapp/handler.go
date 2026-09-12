@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -409,6 +410,52 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 					stopReply, _ := h.gameEngine.StopGame(chatID)
 					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 					_ = h.SendMessage(ctx, chatID, stopReply, messageID)
+					cancel()
+					return
+				}
+
+				if subCmd == "help" || subCmd == "مساعدة" || subCmd == "اقسام" || subCmd == "أقسام" {
+					helpReply := h.gameEngine.GetHelpText()
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					_ = h.SendMessage(ctx, chatID, helpReply, messageID)
+					cancel()
+					return
+				}
+
+				if subCmd == "config" || subCmd == "اعدادات" || subCmd == "إعدادات" || subCmd == "ضبط" {
+					if len(parts) >= 4 && (strings.ToLower(parts[2]) == "rounds" || strings.ToLower(parts[2]) == "جولات" || strings.ToLower(parts[2]) == "اسئلة") {
+						if n, err := strconv.Atoi(parts[3]); err == nil {
+							reply, err := h.gameEngine.SetRounds(chatID, n)
+							if err != nil {
+								reply = fmt.Sprintf("⚠️ %v", err)
+							}
+							ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+							_ = h.SendMessage(ctx, chatID, reply, messageID)
+							cancel()
+							return
+						}
+					} else if len(parts) >= 4 && (strings.ToLower(parts[2]) == "time" || strings.ToLower(parts[2]) == "timer" || strings.ToLower(parts[2]) == "وقت") {
+						if s, err := strconv.Atoi(parts[3]); err == nil {
+							reply, err := h.gameEngine.SetTimeout(chatID, s)
+							if err != nil {
+								reply = fmt.Sprintf("⚠️ %v", err)
+							}
+							ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+							_ = h.SendMessage(ctx, chatID, reply, messageID)
+							cancel()
+							return
+						}
+					} else if len(parts) >= 3 && (strings.ToLower(parts[2]) == "reset" || strings.ToLower(parts[2]) == "افتراضي") {
+						reply := h.gameEngine.ResetConfig(chatID)
+						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+						_ = h.SendMessage(ctx, chatID, reply, messageID)
+						cancel()
+						return
+					}
+
+					cfgReply := h.gameEngine.GetConfigText(chatID)
+					ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+					_ = h.SendMessage(ctx, chatID, cfgReply, messageID)
 					cancel()
 					return
 				}

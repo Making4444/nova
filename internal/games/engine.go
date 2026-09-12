@@ -13,31 +13,25 @@ type BroadcasterFunc func(chatID string, text string, replyToMsgID string) error
 
 // Engine coordinates real-time interactive game sessions across WhatsApp chats.
 type Engine struct {
-	leaderboard         *LeaderboardStore
-	broadcaster         BroadcasterFunc
-	activeGames         map[string]*ActiveGame
-	questionDuration    time.Duration
-	speedBonusThreshold time.Duration
-	mu                  sync.RWMutex
+	bank           *BankManager
+	historyTracker *HistoryTracker
+	configStore    *ConfigStore
+	leaderboard    *LeaderboardStore
+	broadcaster    BroadcasterFunc
+	activeGames    map[string]*ActiveGame
+	mu             sync.RWMutex
 }
 
-// NewEngine initializes the competition engine.
+// NewEngine initializes the competition engine with all stores.
 func NewEngine(dataDir string, broadcaster BroadcasterFunc) *Engine {
 	return &Engine{
-		leaderboard:         NewLeaderboardStore(dataDir),
-		broadcaster:         broadcaster,
-		activeGames:         make(map[string]*ActiveGame),
-		questionDuration:    45 * time.Second,
-		speedBonusThreshold: 10 * time.Second,
+		bank:           NewBankManager(dataDir),
+		historyTracker: NewHistoryTracker(dataDir),
+		configStore:    NewConfigStore(dataDir),
+		leaderboard:    NewLeaderboardStore(dataDir),
+		broadcaster:    broadcaster,
+		activeGames:    make(map[string]*ActiveGame),
 	}
-}
-
-// SetDurations allows customizing question timeout and speed bonus threshold (useful for testing).
-func (e *Engine) SetDurations(timeout, speedBonus time.Duration) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.questionDuration = timeout
-	e.speedBonusThreshold = speedBonus
 }
 
 // HasActiveGame checks if a game is currently ongoing in the specified chat.
@@ -56,7 +50,46 @@ func (e *Engine) GetLeaderboardStore() *LeaderboardStore {
 	return e.leaderboard
 }
 
-// StartGame begins a new 5-question competition round in the chat.
+// GetBankManager returns the underlying bank manager.
+func (e *Engine) GetBankManager() *BankManager {
+	return e.bank
+}
+
+// GetConfigStore returns the underlying config store.
+func (e *Engine) GetConfigStore() *ConfigStore {
+	return e.configStore
+}
+
+// ParseCategory maps user category input in Arabic or English to the canonical Category.
+func ParseCategory(input string) Category {
+	req := strings.ToLower(strings.TrimSpace(input))
+	switch req {
+	case "christian", "bible", "مسيحية", "مسيحي", "كتاب", "انجيل", "إنجيل", "كنسي", "دين", "ديني":
+		return CategoryChristian
+	case "quote", "quotes", "افيه", "إفيه", "افيهات", "إفيهات":
+		return CategoryQuote
+	case "movie", "movies", "افلام", "أفلام", "سينما":
+		return CategoryMovie
+	case "football", "ball", "كورة", "كوره", "رياضة", "رياضه":
+		return CategoryFootball
+	case "proverb", "proverbs", "امثال", "أمثال", "مثل":
+		return CategoryProverb
+	case "trivia", "عامة", "عامه", "ثقافة", "ثقافه", "معلومات":
+		return CategoryTrivia
+	case "riddle", "riddles", "فوازير", "فزورة", "فزوره", "لغز", "الغاز", "ألغاز":
+		return CategoryRiddle
+	case "science", "tech", "علوم", "تكنولوجيا", "فضاء":
+		return CategoryScience
+	case "history", "تاريخ", "فراعنة", "فراعنه":
+		return CategoryHistory
+	case "cartoon", "anime", "كرتون", "انمي", "أنمي", "سبيستون", "ديزني":
+		return CategoryCartoon
+	default:
+		return CategoryMixed
+	}
+}
+
+// StartGame begins a new competition round in the chat with zero repetition.
 func (e *Engine) StartGame(chatID string, requestedCategory string) (string, error) {
 	if chatID == "" {
 		return "", fmt.Errorf("invalid chatID")
@@ -68,21 +101,21 @@ func (e *Engine) StartGame(chatID string, requestedCategory string) (string, err
 		return "⚠️ *في مسابقة شغالة بالفعل في الشات ده دلوقتي!*\nجاوبوا على السؤال المعروض أو اكتبوا `/game stop` لإيقافها وبدء غيرها.", nil
 	}
 
-	cat := CategoryMixed
-	req := strings.ToLower(strings.TrimSpace(requestedCategory))
-	switch req {
-	case "movie", "movies", "افلام", "أفلام", "سينما", "افيه", "إفيه":
-		cat = CategoryMovie
-	case "trivia", "ثقافة", "ثقافه", "معلومات", "اسئلة", "أسئلة", "كورة", "رياضة":
-		cat = CategoryTrivia
-	case "riddle", "riddles", "فوازير", "فزورة", "فزوره", "لغز", "الغاز":
-		cat = CategoryRiddle
+	cat := ParseCategory(requestedCategory)
+	cfg := e.configStore.GetConfig(chatID)
+
+	// Fetch questions pool
+	pool := e.bank.GetQuestions(cat)
+	if len(pool) == 0 {
+		e.mu.Unlock()
+		return "❌ عذراً، لا توجد أسئلة متوفرة حالياً لهذا القسم في بنك الأسئلة.", nil
 	}
 
-	questions := GetRandomQuestions(cat, 5)
+	// Pick non-repeating questions through rotation history
+	questions := e.historyTracker.PickQuestions(chatID, cat, cfg.RoundCount, pool)
 	if len(questions) == 0 {
 		e.mu.Unlock()
-		return "❌ عذراً، لا توجد أسئلة متوفرة حالياً في بنك الأسئلة.", nil
+		return "❌ عذراً، تعذر تحميل أسئلة الجولة.", nil
 	}
 
 	game := &ActiveGame{
@@ -92,31 +125,46 @@ func (e *Engine) StartGame(chatID string, requestedCategory string) (string, err
 		CurrentIndex:   0,
 		RoundScores:    make(map[string]int),
 		RoundUserNames: make(map[string]string),
+		Config:         cfg,
 		Stopped:        false,
 	}
 	e.activeGames[chatID] = game
 	e.mu.Unlock()
 
-	// Announce game start and display first question
-	catTitle := "🎮 *تحدي ومسابقات نوفا السريعة (كوكتيل منوع)* 🌟"
+	// Title formatting
+	catTitle := "🎮 *تحدي ومسابقات نوفا (كوكتيل منوع)* 🌟"
 	switch cat {
+	case CategoryChristian:
+		catTitle = "✝️ *مسابقة الكتاب المقدس والتاريخ الكنسي مع نوفا* 🕊️"
+	case CategoryQuote:
+		catTitle = "🎭 *مسابقة الإفيهات والمسرحيات المصرية مع نوفا* 🍿"
 	case CategoryMovie:
-		catTitle = "🎬 *مسابقة السينما والإفيهات المصرية مع نوفا* 🍿"
+		catTitle = "🎬 *مسابقة السينما والأفلام والفنون مع نوفا* 🎥"
+	case CategoryFootball:
+		catTitle = "⚽ *تحدي الكورة والرياضة مع نوفا* 🏆"
+	case CategoryProverb:
+		catTitle = "📜 *مسابقة كمّل المثل الشعبي المصري مع نوفا* 🪕"
 	case CategoryTrivia:
-		catTitle = "🧠 *تحدي المعلومات العامة والكورة مع نوفا* ⚽"
+		catTitle = "🧠 *تحدي المعلومات العامة والثقافة مع نوفا* 🌍"
 	case CategoryRiddle:
-		catTitle = "🧩 *فوازير وألغاز ذكاء مع نوفا* 💡"
+		catTitle = "🧩 *فوازير وألغاز ذكاء مصرية مع نوفا* 💡"
+	case CategoryScience:
+		catTitle = "🔬 *تحدي العلوم والتكنولوجيا والفضاء مع نوفا* 🚀"
+	case CategoryHistory:
+		catTitle = "🏛️ *تحدي التاريخ والحضارات والشخصيات مع نوفا* 📜"
+	case CategoryCartoon:
+		catTitle = "🎨 *مسابقة الكرتون والأنمي وسبيستون وديزني مع نوفا* 📺"
 	}
 
 	introMsg := fmt.Sprintf("%s\n"+
 		"═══════════════════════\n"+
-		"• عدد الجولات: *5 أسئلة*\n"+
-		"• مهلة كل سؤال: *45 ثانية*\n"+
-		"• الإجابة السريعة (أول 10 ثواني) = *نقطتين سرعة بديهة ⚡*\n"+
+		"• عدد الجولات: *%d أسئلة*\n"+
+		"• مهلة كل سؤال: *%d ثانية*\n"+
+		"• الإجابة السريعة (أول %d ثوانٍ) = *نقطتين سرعة بديهة ⚡*\n"+
 		"• الإجابة العادية = *نقطة واحدة 🎯*\n"+
 		"• الإجابة بتنكتب عادي في الشات بدون منشن ولا أوامر!\n\n"+
 		"جاهزين؟ نبدأ مع أول سؤال حالا! 👇\n"+
-		"═══════════════════════", catTitle)
+		"═══════════════════════", catTitle, len(questions), cfg.QuestionTimeoutSec, cfg.SpeedBonusSec)
 
 	if e.broadcaster != nil {
 		_ = e.broadcaster(chatID, introMsg, "")
@@ -146,22 +194,27 @@ func (e *Engine) postQuestion(chatID string, qIndex int) {
 	q := game.Questions[qIndex]
 	game.QuestionStartTime = time.Now()
 
-	// Set timeout timer
-	timeout := e.questionDuration
-	game.Timer = time.AfterFunc(timeout, func() {
+	// Set timeout timer based on chat configuration
+	timeoutSec := game.Config.QuestionTimeoutSec
+	if timeoutSec <= 0 {
+		timeoutSec = 45
+	}
+	timeoutDuration := time.Duration(timeoutSec) * time.Second
+
+	game.Timer = time.AfterFunc(timeoutDuration, func() {
 		e.handleTimeout(chatID, qIndex)
 	})
 	e.mu.Unlock()
 
-	msg := fmt.Sprintf("❓ *السؤال (%d من %d):*\n\n%s\n\n⏱️ *معاكم 45 ثانية تجاوبوا!*",
-		qIndex+1, len(game.Questions), q.Prompt)
+	msg := fmt.Sprintf("❓ *السؤال (%d من %d):*\n\n%s\n\n⏱️ *معاكم %d ثانية تجاوبوا!*",
+		qIndex+1, len(game.Questions), q.Prompt, timeoutSec)
 
 	if e.broadcaster != nil {
 		_ = e.broadcaster(chatID, msg, "")
 	}
 }
 
-// handleTimeout is called when 45s elapse without any correct answer.
+// handleTimeout is called when question timeout elapses without any correct answer.
 func (e *Engine) handleTimeout(chatID string, qIndex int) {
 	e.mu.Lock()
 	game, exists := e.activeGames[chatID]
@@ -257,7 +310,11 @@ func (e *Engine) ProcessAnswer(chatID, senderID, senderName, text, messageID str
 	elapsed := time.Since(game.QuestionStartTime)
 	points := 1
 	speedBonus := false
-	if elapsed <= e.speedBonusThreshold {
+	speedThreshold := time.Duration(game.Config.SpeedBonusSec) * time.Second
+	if speedThreshold <= 0 {
+		speedThreshold = 10 * time.Second
+	}
+	if elapsed <= speedThreshold {
 		points = 2
 		speedBonus = true
 	}
@@ -371,4 +428,60 @@ func (e *Engine) GetLeaderboardText(chatID string) string {
 		return "لوحة الصدارة غير متصلة حالياً."
 	}
 	return e.leaderboard.FormatTopMessage(chatID, 10)
+}
+
+// GetConfigText formats current chat game settings.
+func (e *Engine) GetConfigText(chatID string) string {
+	cfg := e.configStore.GetConfig(chatID)
+	return fmt.Sprintf("⚙️ *إعدادات المسابقات في هذا الشات:*\n\n"+
+		"• *عدد أسئلة الجولة:* %d أسئلة\n"+
+		"• *مهلة الإجابة:* %d ثانية لكل سؤال\n"+
+		"• *مهلة بونص السرعة (نقطتين):* أول %d ثوانٍ\n\n"+
+		"💡 *لتعديل الإعدادات:*\n"+
+		"• `/game config rounds <عدد>` : لتغيير عدد الأسئلة (من 1 إلى 30)\n"+
+		"• `/game config time <ثواني>` : لتغيير مهلة السؤال (من 10 إلى 180 ثانية)\n"+
+		"• `/game config reset` : لإعادة الإعدادات للوضع الافتراضي (5 أسئلة و 45 ثانية)",
+		cfg.RoundCount, cfg.QuestionTimeoutSec, cfg.SpeedBonusSec)
+}
+
+// SetRounds updates round questions count.
+func (e *Engine) SetRounds(chatID string, count int) (string, error) {
+	if err := e.configStore.SetRounds(chatID, count); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("✅ *تم بنجاح ضبط عدد أسئلة كل جولة في هذا الشات على:* `%d أسئلة`", count), nil
+}
+
+// SetTimeout updates question timer duration.
+func (e *Engine) SetTimeout(chatID string, seconds int) (string, error) {
+	if err := e.configStore.SetTimeout(chatID, seconds); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("✅ *تم بنجاح ضبط مهلة إجابة السؤال في هذا الشات على:* `%d ثانية`", seconds), nil
+}
+
+// ResetConfig restores default settings.
+func (e *Engine) ResetConfig(chatID string) string {
+	_ = e.configStore.ResetConfig(chatID)
+	return "✅ *تمت إعادة إعدادات المسابقات في هذا الشات إلى الوضع الافتراضي:* (5 أسئلة، 45 ثانية لكل سؤال)."
+}
+
+// GetHelpText returns the categories and commands list.
+func (e *Engine) GetHelpText() string {
+	return "🎮 *دليل أقسام مسابقات نوفا التفاعلية (500 سؤال):*\n\n" +
+		"• `/game christian` أو `/game مسيحي` : مسابقة الكتاب المقدس والتاريخ الكنسي ✝️\n" +
+		"• `/game quote` أو `/game افيهات` : مسابقة أشهر الإفيهات والمسرحيات المصرية 🎭\n" +
+		"• `/game movie` أو `/game سينما` : مسابقة الأفلام والفنون والممثلين 🎬\n" +
+		"• `/game ball` أو `/game كورة` : مسابقة كورة القدم المحلية والعالمية ⚽\n" +
+		"• `/game amthal` أو `/game امثال` : مسابقة كمّل المثل الشعبي المصري 📜\n" +
+		"• `/game trivia` أو `/game عامة` : مسابقة ثقافة عامة، جغرافيا، وعواصم 🧠\n" +
+		"• `/game riddle` أو `/game فوازير` : مسابقة فوازير وألغاز ذكاء 🧩\n" +
+		"• `/game science` أو `/game علوم` : مسابقة علوم وتكنولوجيا وفضاء 🔬\n" +
+		"• `/game history` أو `/game تاريخ` : مسابقة تاريخ وحضارات وفراعنة 🏛️\n" +
+		"• `/game cartoon` أو `/game كرتون` : مسابقة كرتون وأنمي وسبيستون وديزني 🎨\n" +
+		"• `/game` أو `/game كوكتيل` : تشكيلة عشوائية منوعة من كل الأقسام! 🌟\n\n" +
+		"⚙️ *التحكم والإعدادات:*\n" +
+		"• `/game stop` : إيقاف المسابقة الحالية 🛑\n" +
+		"• `/top` : عرض لوحة الصدارة وترتيب أبطال الشات 🏆\n" +
+		"• `/game config` : عرض وتعديل عدد الأسئلة ووقت الإجابة ⚙️"
 }
