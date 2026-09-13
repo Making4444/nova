@@ -63,16 +63,18 @@ func TestCheckAnswer(t *testing.T) {
 	}
 }
 
-func TestBankManagerLoads500Questions(t *testing.T) {
+func TestBankManagerLoads3000Questions(t *testing.T) {
 	// Point to actual data directory in repo
 	bm := NewBankManager("../../data")
 	total := bm.TotalCount()
+	t.Logf("Total questions loaded: %d", total)
+	t.Logf("Summary: %s", bm.Summary())
 
-	if total < 500 {
-		t.Errorf("expected at least 500 questions, got %d", total)
+	if total < 3000 {
+		t.Errorf("expected at least 3000 questions, got %d", total)
 	}
 
-	// Verify key categories exist
+	// Verify all 16 categories exist
 	categories := []Category{
 		CategoryChristian,
 		CategoryQuote,
@@ -84,6 +86,12 @@ func TestBankManagerLoads500Questions(t *testing.T) {
 		CategoryScience,
 		CategoryHistory,
 		CategoryCartoon,
+		CategoryTech,
+		CategorySpace,
+		CategoryGeography,
+		CategoryAnimals,
+		CategoryFood,
+		CategorySports,
 	}
 
 	for _, cat := range categories {

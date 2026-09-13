@@ -1,0 +1,2303 @@
+[
+  {
+    "id": "geo_001",
+    "category": "geography",
+    "prompt": "ما عاصمة فرنسا",
+    "accepted_answers": [
+      "باريس",
+      "Paris"
+    ],
+    "hint": "مدينة برج إيفل",
+    "fun_fact": "باريس تسمى مدينة النور وتستقبل ملايين السياح سنويا"
+  },
+  {
+    "id": "geo_002",
+    "category": "geography",
+    "prompt": "ما عاصمة اليابان",
+    "accepted_answers": [
+      "طوكيو",
+      "توكيو",
+      "Tokyo"
+    ],
+    "hint": "أكبر مدن العالم سكانا في منطقتها الحضرية",
+    "fun_fact": "طوكيو كانت تسمى إيدو قديما"
+  },
+  {
+    "id": "geo_003",
+    "category": "geography",
+    "prompt": "ما عاصمة مصر",
+    "accepted_answers": [
+      "القاهرة",
+      "القاهره",
+      "Cairo"
+    ],
+    "hint": "مدينة الألف مئذنة على النيل",
+    "fun_fact": "القاهرة أكبر مدينة عربية سكانا"
+  },
+  {
+    "id": "geo_004",
+    "category": "geography",
+    "prompt": "ما عاصمة السعودية",
+    "accepted_answers": [
+      "الرياض",
+      "الرياظ",
+      "Riyadh"
+    ],
+    "hint": "مدينة في نجد وسط المملكة",
+    "fun_fact": "الرياض تعني الحدائق وكانت واحة خضراء"
+  },
+  {
+    "id": "geo_005",
+    "category": "geography",
+    "prompt": "ما عاصمة بريطانيا",
+    "accepted_answers": [
+      "لندن",
+      "London"
+    ],
+    "hint": "مدينة نهر التايمز وساعة بيج بن",
+    "fun_fact": "لندن من أقدم العواصم ويمر فيها خط جرينتش قربها"
+  },
+  {
+    "id": "geo_006",
+    "category": "geography",
+    "prompt": "ما عاصمة إسبانيا",
+    "accepted_answers": [
+      "مدريد",
+      "Madrid"
+    ],
+    "hint": "مدينة في وسط شبه الجزيرة الأيبيرية",
+    "fun_fact": "مدريد أعلى عواصم أوروبا ارتفاعا"
+  },
+  {
+    "id": "geo_007",
+    "category": "geography",
+    "prompt": "ما عاصمة إيطاليا",
+    "accepted_answers": [
+      "روما",
+      "Rome"
+    ],
+    "hint": "المدينة الخالدة ومقر الفاتيكان قربها",
+    "fun_fact": "روما بنيت على سبعة تلال"
+  },
+  {
+    "id": "geo_008",
+    "category": "geography",
+    "prompt": "ما عاصمة ألمانيا",
+    "accepted_answers": [
+      "برلين",
+      "Berlin"
+    ],
+    "hint": "مدينة كان يقسمها جدار شهير",
+    "fun_fact": "برلين بها بوابة براندنبورج الشهيرة"
+  },
+  {
+    "id": "geo_009",
+    "category": "geography",
+    "prompt": "ما عاصمة كندا",
+    "accepted_answers": [
+      "أوتاوا",
+      "اوتاوا",
+      "Ottawa"
+    ],
+    "hint": "ليست تورونتو ولا مونتريال",
+    "fun_fact": "أوتاوا مدينة ثنائية اللغة إنجليزية فرنسية"
+  },
+  {
+    "id": "geo_010",
+    "category": "geography",
+    "prompt": "ما عاصمة أستراليا",
+    "accepted_answers": [
+      "كانبرا",
+      "كانبيرا",
+      "Canberra"
+    ],
+    "hint": "ليست سيدني ولا ملبورن",
+    "fun_fact": "كانبرا مدينة مخططة بنيت لتكون عاصمة"
+  },
+  {
+    "id": "geo_011",
+    "category": "geography",
+    "prompt": "ما عاصمة البرازيل",
+    "accepted_answers": [
+      "برازيليا",
+      "برازيليا",
+      "Brasilia"
+    ],
+    "hint": "ليست ريو ولا ساو باولو",
+    "fun_fact": "برازيليا مدينة حديثة صممها أوسكار نيماير"
+  },
+  {
+    "id": "geo_012",
+    "category": "geography",
+    "prompt": "ما عاصمة الأرجنتين",
+    "accepted_answers": [
+      "بوينس آيرس",
+      "بوينس ايرس",
+      "Buenos Aires"
+    ],
+    "hint": "معناها الهواء الطيب",
+    "fun_fact": "بوينس آيرس عاصمة التانجو"
+  },
+  {
+    "id": "geo_013",
+    "category": "geography",
+    "prompt": "ما عاصمة المغرب",
+    "accepted_answers": [
+      "الرباط",
+      "الرباط",
+      "Rabat"
+    ],
+    "hint": "ليست الدار البيضاء",
+    "fun_fact": "الرباط على ساحل المحيط الأطلسي"
+  },
+  {
+    "id": "geo_014",
+    "category": "geography",
+    "prompt": "ما عاصمة الجزائر",
+    "accepted_answers": [
+      "الجزائر",
+      "الجزائر العاصمة",
+      "Algiers"
+    ],
+    "hint": "تسمى البهجة والجزائر البيضاء",
+    "fun_fact": "الجزائر العاصمة تطل على البحر المتوسط"
+  },
+  {
+    "id": "geo_015",
+    "category": "geography",
+    "prompt": "ما عاصمة تونس",
+    "accepted_answers": [
+      "تونس",
+      "Tunis"
+    ],
+    "hint": "قربها قرطاج وسيدي بوسعيد",
+    "fun_fact": "مدينة تونس بها جامع الزيتونة العريق"
+  },
+  {
+    "id": "geo_016",
+    "category": "geography",
+    "prompt": "ما عاصمة الأردن",
+    "accepted_answers": [
+      "عمان",
+      "امان",
+      "Amman"
+    ],
+    "hint": "مدينة التلال السبع",
+    "fun_fact": "عمان كانت تسمى فيلادلفيا قديما"
+  },
+  {
+    "id": "geo_017",
+    "category": "geography",
+    "prompt": "ما عاصمة لبنان",
+    "accepted_answers": [
+      "بيروت",
+      "Barut",
+      "Beirut"
+    ],
+    "hint": "تسمى ست الدنيا",
+    "fun_fact": "بيروت من أقدم مدن العالم المأهولة"
+  },
+  {
+    "id": "geo_018",
+    "category": "geography",
+    "prompt": "ما عاصمة سوريا",
+    "accepted_answers": [
+      "دمشق",
+      "الشام",
+      "Damascus"
+    ],
+    "hint": "أقدم عاصمة مأهولة في العالم",
+    "fun_fact": "دمشق تشتهر بالياسمين وسوق الحميدية"
+  },
+  {
+    "id": "geo_019",
+    "category": "geography",
+    "prompt": "ما عاصمة العراق",
+    "accepted_answers": [
+      "بغداد",
+      "Baghdad"
+    ],
+    "hint": "مدينة السلام على دجلة",
+    "fun_fact": "بغداد كانت أكبر مدن العالم في العصر العباسي"
+  },
+  {
+    "id": "geo_020",
+    "category": "geography",
+    "prompt": "ما عاصمة الإمارات",
+    "accepted_answers": [
+      "أبوظبي",
+      "ابوظبي",
+      "Abu Dhabi"
+    ],
+    "hint": "ليست دبي",
+    "fun_fact": "أبوظبي جزيرة وتضم جامع الشيخ زايد"
+  },
+  {
+    "id": "geo_021",
+    "category": "geography",
+    "prompt": "ما عاصمة قطر",
+    "accepted_answers": [
+      "الدوحة",
+      "Doha"
+    ],
+    "hint": "مدينة الكورنيش على الخليج",
+    "fun_fact": "الدوحة استضافت كأس العالم 2022"
+  },
+  {
+    "id": "geo_022",
+    "category": "geography",
+    "prompt": "ما عاصمة الكويت",
+    "accepted_answers": [
+      "مدينة الكويت",
+      "الكويت",
+      "Kuwait City"
+    ],
+    "hint": "على ساحل الخليج العربي",
+    "fun_fact": "برج الكويت من أشهر معالمها"
+  },
+  {
+    "id": "geo_023",
+    "category": "geography",
+    "prompt": "ما عاصمة البحرين",
+    "accepted_answers": [
+      "المنامة",
+      "المنامه",
+      "Manama"
+    ],
+    "hint": "في جزيرة البحرين",
+    "fun_fact": "المنامة مركز مالي خليجي مهم"
+  },
+  {
+    "id": "geo_024",
+    "category": "geography",
+    "prompt": "ما عاصمة عمان",
+    "accepted_answers": [
+      "مسقط",
+      "Maskat",
+      "Muscat"
+    ],
+    "hint": "على بحر عمان",
+    "fun_fact": "مسقط من أقدم مدن الخليج التجارية"
+  },
+  {
+    "id": "geo_025",
+    "category": "geography",
+    "prompt": "ما عاصمة اليمن",
+    "accepted_answers": [
+      "صنعاء",
+      "Sanaa"
+    ],
+    "hint": "من أقدم مدن العالم وبيوتها الطينية",
+    "fun_fact": "صنعاء القديمة موقع تراث عالمي"
+  },
+  {
+    "id": "geo_026",
+    "category": "geography",
+    "prompt": "ما عاصمة السودان",
+    "accepted_answers": [
+      "الخرطوم",
+      "الخرطوم",
+      "Khartoum"
+    ],
+    "hint": "عند ملتقى النيلين",
+    "fun_fact": "الخرطوم تعني لسان الأرض بين النيلين"
+  },
+  {
+    "id": "geo_027",
+    "category": "geography",
+    "prompt": "ما عاصمة ليبيا",
+    "accepted_answers": [
+      "طرابلس",
+      "Tripoli"
+    ],
+    "hint": "عروس البحر المتوسط",
+    "fun_fact": "طرابلس تعني المدن الثلاث باليونانية"
+  },
+  {
+    "id": "geo_028",
+    "category": "geography",
+    "prompt": "ما عاصمة موريتانيا",
+    "accepted_answers": [
+      "نواكشوط",
+      "Nouakchott"
+    ],
+    "hint": "على المحيط الأطلسي",
+    "fun_fact": "نواكشوط كانت قرية صغيرة قبل الاستقلال"
+  },
+  {
+    "id": "geo_029",
+    "category": "geography",
+    "prompt": "ما عاصمة تركيا",
+    "accepted_answers": [
+      "أنقرة",
+      "انقره",
+      "Ankara"
+    ],
+    "hint": "ليست إسطنبول",
+    "fun_fact": "أنقرة في هضبة الأناضول الوسطى"
+  },
+  {
+    "id": "geo_030",
+    "category": "geography",
+    "prompt": "ما عاصمة اليونان",
+    "accepted_answers": [
+      "أثينا",
+      "اثينا",
+      "Athens"
+    ],
+    "hint": "مدينة الأكروبوليس",
+    "fun_fact": "أثينا مهد الديمقراطية"
+  },
+  {
+    "id": "geo_031",
+    "category": "geography",
+    "prompt": "ما عاصمة البرتغال",
+    "accepted_answers": [
+      "لشبونة",
+      "Lisbon",
+      "Lisboa"
+    ],
+    "hint": "على نهر التاجة",
+    "fun_fact": "لشبونة أقدم من روما"
+  },
+  {
+    "id": "geo_032",
+    "category": "geography",
+    "prompt": "ما عاصمة هولندا",
+    "accepted_answers": [
+      "أمستردام",
+      "امستردام",
+      "Amsterdam"
+    ],
+    "hint": "مدينة القنوات المائية",
+    "fun_fact": "أمستردام تحت مستوى البحر جزئيا"
+  },
+  {
+    "id": "geo_033",
+    "category": "geography",
+    "prompt": "ما عاصمة بلجيكا",
+    "accepted_answers": [
+      "بروكسل",
+      "Bruxelles",
+      "Brussels"
+    ],
+    "hint": "مقر الاتحاد الأوروبي",
+    "fun_fact": "بروكسل تشتهر بالشوكولاتة والوافل"
+  },
+  {
+    "id": "geo_034",
+    "category": "geography",
+    "prompt": "ما عاصمة سويسرا",
+    "accepted_answers": [
+      "برن",
+      "Bern"
+    ],
+    "hint": "ليست زيورخ ولا جنيف",
+    "fun_fact": "برن مدينتها القديمة تراث عالمي"
+  },
+  {
+    "id": "geo_035",
+    "category": "geography",
+    "prompt": "ما عاصمة النمسا",
+    "accepted_answers": [
+      "فيينا",
+      "Vienna"
+    ],
+    "hint": "مدينة الموسيقى وموزارت",
+    "fun_fact": "فيينا من أفضل مدن العالم للعيش"
+  },
+  {
+    "id": "geo_036",
+    "category": "geography",
+    "prompt": "ما عاصمة السويد",
+    "accepted_answers": [
+      "ستوكهولم",
+      "Stockholm"
+    ],
+    "hint": "مبنية على جزر",
+    "fun_fact": "ستوكهولم تضم متحف نوبل"
+  },
+  {
+    "id": "geo_037",
+    "category": "geography",
+    "prompt": "ما عاصمة النرويج",
+    "accepted_answers": [
+      "أوسلو",
+      "Oslo"
+    ],
+    "hint": "على مضيق شهير",
+    "fun_fact": "أوسلو تحيط بها الغابات والفيوردات"
+  },
+  {
+    "id": "geo_038",
+    "category": "geography",
+    "prompt": "ما عاصمة الدنمارك",
+    "accepted_answers": [
+      "كوبنهاجن",
+      "Copenhagen"
+    ],
+    "hint": "مدينة حورية البحر الصغيرة",
+    "fun_fact": "كوبنهاجن من أسعد مدن العالم"
+  },
+  {
+    "id": "geo_039",
+    "category": "geography",
+    "prompt": "ما عاصمة فنلندا",
+    "accepted_answers": [
+      "هلسنكي",
+      "Helsinki"
+    ],
+    "hint": "على خليج فنلندا",
+    "fun_fact": "هلسنكي مدينة الساونا والتصميم"
+  },
+  {
+    "id": "geo_040",
+    "category": "geography",
+    "prompt": "ما عاصمة بولندا",
+    "accepted_answers": [
+      "وارسو",
+      "Warsaw"
+    ],
+    "hint": "على نهر فيستولا",
+    "fun_fact": "وارسو أعيد بناؤها بعد الحرب العالمية"
+  },
+  {
+    "id": "geo_041",
+    "category": "geography",
+    "prompt": "ما عاصمة روسيا",
+    "accepted_answers": [
+      "موسكو",
+      "Moscow"
+    ],
+    "hint": "بها الساحة الحمراء والكرملين",
+    "fun_fact": "موسكو أكبر مدينة أوروبية سكانا"
+  },
+  {
+    "id": "geo_042",
+    "category": "geography",
+    "prompt": "ما عاصمة أوكرانيا",
+    "accepted_answers": [
+      "كييف",
+      "Kyiv"
+    ],
+    "hint": "على نهر دنيبر",
+    "fun_fact": "كييف من أقدم مدن أوروبا الشرقية"
+  },
+  {
+    "id": "geo_043",
+    "category": "geography",
+    "prompt": "ما عاصمة الصين",
+    "accepted_answers": [
+      "بكين",
+      "Beijing"
+    ],
+    "hint": "بها المدينة المحرمة",
+    "fun_fact": "بكين استضافت أولمبياد 2008"
+  },
+  {
+    "id": "geo_044",
+    "category": "geography",
+    "prompt": "ما عاصمة كوريا الجنوبية",
+    "accepted_answers": [
+      "سيول",
+      "Seoul"
+    ],
+    "hint": "على نهر الهان",
+    "fun_fact": "سيول من أكثر مدن العالم اتصالا بالإنترنت"
+  },
+  {
+    "id": "geo_045",
+    "category": "geography",
+    "prompt": "ما عاصمة الهند",
+    "accepted_answers": [
+      "نيودلهي",
+      "نيو دلهي",
+      "New Delhi"
+    ],
+    "hint": "جزء من دلهي الكبرى",
+    "fun_fact": "نيودلهي بها بوابة الهند الشهيرة"
+  },
+  {
+    "id": "geo_046",
+    "category": "geography",
+    "prompt": "ما عاصمة إندونيسيا",
+    "accepted_answers": [
+      "جاكرتا",
+      "Jakarta"
+    ],
+    "hint": "على جزيرة جاوة",
+    "fun_fact": "إندونيسيا تبني عاصمة جديدة اسمها نوسانتارا"
+  },
+  {
+    "id": "geo_047",
+    "category": "geography",
+    "prompt": "ما عاصمة ماليزيا",
+    "accepted_answers": [
+      "كوالالمبور",
+      "Kuala Lumpur"
+    ],
+    "hint": "بها برجا بتروناس",
+    "fun_fact": "كوالالمبور تعني ملتقى النهرين"
+  },
+  {
+    "id": "geo_048",
+    "category": "geography",
+    "prompt": "ما عاصمة تايلاند",
+    "accepted_answers": [
+      "بانكوك",
+      "Bangkok"
+    ],
+    "hint": "مدينة المعابد الذهبية",
+    "fun_fact": "بانكوك اسمها الأصلي من أطول أسماء المدن"
+  },
+  {
+    "id": "geo_049",
+    "category": "geography",
+    "prompt": "ما عاصمة الفلبين",
+    "accepted_answers": [
+      "مانيلا",
+      "Manila"
+    ],
+    "hint": "على خليج مانيلا",
+    "fun_fact": "مانيلا من أكثر مدن العالم كثافة"
+  },
+  {
+    "id": "geo_050",
+    "category": "geography",
+    "prompt": "ما عاصمة باكستان",
+    "accepted_answers": [
+      "إسلام آباد",
+      "اسلام اباد",
+      "Islamabad"
+    ],
+    "hint": "ليست كراتشي",
+    "fun_fact": "إسلام آباد مدينة حديثة مخططة"
+  },
+  {
+    "id": "geo_051",
+    "category": "geography",
+    "prompt": "ما إحدى عواصم جنوب إفريقيا الإدارية",
+    "accepted_answers": [
+      "بريتوريا",
+      "Pretoria"
+    ],
+    "hint": "ليست جوهانسبرج",
+    "fun_fact": "جنوب إفريقيا لها ثلاث عواصم"
+  },
+  {
+    "id": "geo_052",
+    "category": "geography",
+    "prompt": "ما عاصمة إيران",
+    "accepted_answers": [
+      "طهران",
+      "Tehran"
+    ],
+    "hint": "عند سفح جبل دماوند",
+    "fun_fact": "طهران من أكبر مدن الشرق الأوسط"
+  },
+  {
+    "id": "geo_053",
+    "category": "geography",
+    "prompt": "ما عاصمة العراق",
+    "accepted_answers": [
+      "بغداد",
+      "Baghdad"
+    ],
+    "hint": "عاصمة الرشيد على دجلة",
+    "fun_fact": "بغداد أسسها المنصور مدينة مدورة"
+  },
+  {
+    "id": "geo_054",
+    "category": "geography",
+    "prompt": "ما أكبر دولة في العالم مساحة",
+    "accepted_answers": [
+      "روسيا",
+      "Russia"
+    ],
+    "hint": "تمتد بين أوروبا وآسيا",
+    "fun_fact": "روسيا مساحتها أكثر من 17 مليون كيلومتر مربع"
+  },
+  {
+    "id": "geo_055",
+    "category": "geography",
+    "prompt": "ما أصغر دولة في العالم",
+    "accepted_answers": [
+      "الفاتيكان",
+      "فاتيكان",
+      "Vatican"
+    ],
+    "hint": "داخل مدينة أوروبية شهيرة",
+    "fun_fact": "الفاتيكان مساحتها أقل من كيلومتر مربع"
+  },
+  {
+    "id": "geo_056",
+    "category": "geography",
+    "prompt": "ما أكبر دولة عربية مساحة",
+    "accepted_answers": [
+      "الجزائر",
+      "Algeria"
+    ],
+    "hint": "في شمال إفريقيا",
+    "fun_fact": "الجزائر أكبر دولة إفريقية أيضا"
+  },
+  {
+    "id": "geo_057",
+    "category": "geography",
+    "prompt": "ما أكبر جزيرة في العالم",
+    "accepted_answers": [
+      "جرينلاند",
+      "غرينلاند",
+      "Greenland"
+    ],
+    "hint": "تابعة للدنمارك في الشمال",
+    "fun_fact": "جرينلاند مغطاة بالجليد بنسبة كبيرة"
+  },
+  {
+    "id": "geo_058",
+    "category": "geography",
+    "prompt": "في أي قارة تقع دولة البرازيل",
+    "accepted_answers": [
+      "أمريكا الجنوبية",
+      "امريكا الجنوبيه",
+      "South America"
+    ],
+    "hint": "قارة الأمازون",
+    "fun_fact": "البرازيل أكبر دول قارتها"
+  },
+  {
+    "id": "geo_059",
+    "category": "geography",
+    "prompt": "في أي قارة تقع مصر",
+    "accepted_answers": [
+      "إفريقيا",
+      "افريقيا",
+      "Africa"
+    ],
+    "hint": "جزء صغير منها في آسيا بسيناء",
+    "fun_fact": "مصر تربط بين قارتين"
+  },
+  {
+    "id": "geo_060",
+    "category": "geography",
+    "prompt": "ما الدولة التي يمر بها خط الاستواء ويوجد بها غابات الأمازون",
+    "accepted_answers": [
+      "البرازيل",
+      "Brazil"
+    ],
+    "hint": "أكبر دول أمريكا الجنوبية",
+    "fun_fact": "الأمازون رئة الأرض"
+  },
+  {
+    "id": "geo_061",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها مدريد",
+    "accepted_answers": [
+      "إسبانيا",
+      "اسبانيا",
+      "Spain"
+    ],
+    "hint": "في شبه الجزيرة الأيبيرية",
+    "fun_fact": "إسبانيا تشتهر بمهرجان الطماطم"
+  },
+  {
+    "id": "geo_062",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها أوتاوا",
+    "accepted_answers": [
+      "كندا",
+      "Canada"
+    ],
+    "hint": "ثاني أكبر دول العالم",
+    "fun_fact": "كندا بها أطول ساحل في العالم"
+  },
+  {
+    "id": "geo_063",
+    "category": "geography",
+    "prompt": "ما الدولة التي تتكون من آلاف الجزر في جنوب شرق آسيا",
+    "accepted_answers": [
+      "إندونيسيا",
+      "Indonesia"
+    ],
+    "hint": "أكبر أرخبيل في العالم",
+    "fun_fact": "إندونيسيا بها أكثر من 17 ألف جزيرة"
+  },
+  {
+    "id": "geo_064",
+    "category": "geography",
+    "prompt": "ما الدولة الأوروبية التي على شكل حذاء",
+    "accepted_answers": [
+      "إيطاليا",
+      "Italy"
+    ],
+    "hint": "في جنوب أوروبا",
+    "fun_fact": "إيطاليا تضم بركان فيزوف"
+  },
+  {
+    "id": "geo_065",
+    "category": "geography",
+    "prompt": "ما الدولة التي تفصل بين أمريكا الشمالية والجنوبية بقناة شهيرة",
+    "accepted_answers": [
+      "بنما",
+      "Panama"
+    ],
+    "hint": "قناة تربط محيطين",
+    "fun_fact": "قناة بنما تختصر رحلة السفن كثيرا"
+  },
+  {
+    "id": "geo_066",
+    "category": "geography",
+    "prompt": "ما الدولة التي تربط بين إفريقيا وآسيا بقناة شهيرة",
+    "accepted_answers": [
+      "مصر",
+      "Egypt"
+    ],
+    "hint": "قناة تربط بحرين",
+    "fun_fact": "قناة السويس أهم ممر ملاحي"
+  },
+  {
+    "id": "geo_067",
+    "category": "geography",
+    "prompt": "ما مضيق يفصل بين المغرب وإسبانيا",
+    "accepted_answers": [
+      "مضيق جبل طارق",
+      "جبل طارق",
+      "Gibraltar"
+    ],
+    "hint": "بين المتوسط والأطلسي",
+    "fun_fact": "جبل طارق سمي باسم طارق بن زياد"
+  },
+  {
+    "id": "geo_068",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها نيروبي",
+    "accepted_answers": [
+      "كينيا",
+      "Kenya"
+    ],
+    "hint": "في شرق إفريقيا",
+    "fun_fact": "كينيا مشهورة بمحمية ماساي مارا"
+  },
+  {
+    "id": "geo_069",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها أبوجا",
+    "accepted_answers": [
+      "نيجيريا",
+      "Nigeria"
+    ],
+    "hint": "أكبر دول إفريقيا سكانا",
+    "fun_fact": "نيجيريا تسمى عملاق إفريقيا"
+  },
+  {
+    "id": "geo_070",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها أديس أبابا",
+    "accepted_answers": [
+      "إثيوبيا",
+      "اثيوبيا",
+      "Ethiopia"
+    ],
+    "hint": "مقر الاتحاد الإفريقي",
+    "fun_fact": "إثيوبيا لم تستعمر أبدا تقريبا"
+  },
+  {
+    "id": "geo_071",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها داكار",
+    "accepted_answers": [
+      "السنغال",
+      "Senegal"
+    ],
+    "hint": "في غرب إفريقيا على الأطلسي",
+    "fun_fact": "السنغال أقصى غرب إفريقيا"
+  },
+  {
+    "id": "geo_072",
+    "category": "geography",
+    "prompt": "ما الدولة الخليجية التي هي أرخبيل",
+    "accepted_answers": [
+      "البحرين",
+      "Bahrain"
+    ],
+    "hint": "جزر في الخليج العربي",
+    "fun_fact": "البحرين تعني البحرين وكانت مشهورة باللؤلؤ"
+  },
+  {
+    "id": "geo_073",
+    "category": "geography",
+    "prompt": "ما الدولة التي تحدها ثماني دول وتحيط بالفاتيكان",
+    "accepted_answers": [
+      "إيطاليا",
+      "Italy"
+    ],
+    "hint": "على شكل حذاء",
+    "fun_fact": "إيطاليا تضم دولتين داخلها"
+  },
+  {
+    "id": "geo_074",
+    "category": "geography",
+    "prompt": "ما أكبر دولة في أمريكا الجنوبية",
+    "accepted_answers": [
+      "البرازيل",
+      "Brazil"
+    ],
+    "hint": "لغتها البرتغالية",
+    "fun_fact": "البرازيل الوحيدة الناطقة بالبرتغالية في قارتها"
+  },
+  {
+    "id": "geo_075",
+    "category": "geography",
+    "prompt": "ما الدولة صاحبة أطول سور في العالم",
+    "accepted_answers": [
+      "الصين",
+      "China"
+    ],
+    "hint": "سور يرى من الفضاء",
+    "fun_fact": "سور الصين طوله أكثر من 21 ألف كيلومتر"
+  },
+  {
+    "id": "geo_076",
+    "category": "geography",
+    "prompt": "ما الدولة التي تقع فيها مدينة البتراء الوردية",
+    "accepted_answers": [
+      "الأردن",
+      "Jordan"
+    ],
+    "hint": "منحوتة في الصخر",
+    "fun_fact": "البتراء من عجائب الدنيا السبع الجديدة"
+  },
+  {
+    "id": "geo_077",
+    "category": "geography",
+    "prompt": "ما الدولة التي يقع فيها برج إيفل",
+    "accepted_answers": [
+      "فرنسا",
+      "France"
+    ],
+    "hint": "في عاصمتها",
+    "fun_fact": "برج إيفل كان أطول بناء في العالم"
+  },
+  {
+    "id": "geo_078",
+    "category": "geography",
+    "prompt": "ما الدولة التي تضم جزر المالديف جارتها الكبرى",
+    "accepted_answers": [
+      "الهند",
+      "India"
+    ],
+    "hint": "جنوب آسيا",
+    "fun_fact": "الهند سابع أكبر دول العالم"
+  },
+  {
+    "id": "geo_079",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها هانوي",
+    "accepted_answers": [
+      "فيتنام",
+      "Vietnam"
+    ],
+    "hint": "في جنوب شرق آسيا",
+    "fun_fact": "فيتنام على شكل حرف إس"
+  },
+  {
+    "id": "geo_080",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها الرياض",
+    "accepted_answers": [
+      "السعودية",
+      "المملكة العربية السعودية",
+      "Saudi Arabia"
+    ],
+    "hint": "أكبر دول الخليج",
+    "fun_fact": "السعودية بها الحرمين الشريفين"
+  },
+  {
+    "id": "geo_081",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها الخرطوم",
+    "accepted_answers": [
+      "السودان",
+      "Sudan"
+    ],
+    "hint": "جنوب مصر",
+    "fun_fact": "السودان كان الأكبر إفريقيا قبل الانفصال"
+  },
+  {
+    "id": "geo_082",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها نواكشوط",
+    "accepted_answers": [
+      "موريتانيا",
+      "Mauritania"
+    ],
+    "hint": "غرب الصحراء الكبرى",
+    "fun_fact": "موريتانيا بلد المليون شاعر"
+  },
+  {
+    "id": "geo_083",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها مقديشو",
+    "accepted_answers": [
+      "الصومال",
+      "Somalia"
+    ],
+    "hint": "في القرن الإفريقي",
+    "fun_fact": "الصومال لها أطول ساحل في إفريقيا"
+  },
+  {
+    "id": "geo_084",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها صنعاء",
+    "accepted_answers": [
+      "اليمن",
+      "Yemen"
+    ],
+    "hint": "جنوب الجزيرة العربية",
+    "fun_fact": "اليمن أصل العرب وسد مأرب فيها"
+  },
+  {
+    "id": "geo_085",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها مسقط",
+    "accepted_answers": [
+      "عمان",
+      "سلطنة عمان",
+      "Oman"
+    ],
+    "hint": "شرق الجزيرة العربية",
+    "fun_fact": "عمان عند مضيق هرمز"
+  },
+  {
+    "id": "geo_086",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها الدوحة",
+    "accepted_answers": [
+      "قطر",
+      "Qatar"
+    ],
+    "hint": "شبه جزيرة في الخليج",
+    "fun_fact": "قطر من أغنى دول العالم"
+  },
+  {
+    "id": "geo_087",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها المنامة",
+    "accepted_answers": [
+      "البحرين",
+      "Bahrain"
+    ],
+    "hint": "جزر خليجية",
+    "fun_fact": "البحرين أول خليجية تكتشف النفط"
+  },
+  {
+    "id": "geo_088",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها أبوظبي",
+    "accepted_answers": [
+      "الإمارات",
+      "الإمارات العربية المتحدة",
+      "UAE"
+    ],
+    "hint": "سبع إمارات",
+    "fun_fact": "الإمارات بها برج خليفة أطول برج"
+  },
+  {
+    "id": "geo_089",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها الكويت",
+    "accepted_answers": [
+      "الكويت",
+      "Kuwait"
+    ],
+    "hint": "شمال الخليج",
+    "fun_fact": "الكويت أبراجها المائية شهيرة"
+  },
+  {
+    "id": "geo_090",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها عمّان",
+    "accepted_answers": [
+      "الأردن",
+      "Jordan"
+    ],
+    "hint": "شرق فلسطين",
+    "fun_fact": "الأردن به البحر الميت أخفض بقعة"
+  },
+  {
+    "id": "geo_091",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها بيروت",
+    "accepted_answers": [
+      "لبنان",
+      "Lebanon"
+    ],
+    "hint": "على المتوسط",
+    "fun_fact": "لبنان به أرز الرب الشهير"
+  },
+  {
+    "id": "geo_092",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها دمشق",
+    "accepted_answers": [
+      "سوريا",
+      "Syria"
+    ],
+    "hint": "شمال الأردن",
+    "fun_fact": "سوريا بها قلعة حلب العريقة"
+  },
+  {
+    "id": "geo_093",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها بغداد",
+    "accepted_answers": [
+      "العراق",
+      "Iraq"
+    ],
+    "hint": "بين النهرين",
+    "fun_fact": "العراق مهد الحضارات"
+  },
+  {
+    "id": "geo_094",
+    "category": "geography",
+    "prompt": "ما أطول نهر في العالم",
+    "accepted_answers": [
+      "النيل",
+      "نهر النيل",
+      "Nile"
+    ],
+    "hint": "يمر بمصر والسودان",
+    "fun_fact": "النيل طوله حوالي 6650 كيلومترا"
+  },
+  {
+    "id": "geo_095",
+    "category": "geography",
+    "prompt": "ما أطول أنهار أمريكا الجنوبية",
+    "accepted_answers": [
+      "الأمازون",
+      "الامازون",
+      "Amazon"
+    ],
+    "hint": "الأغزر تدفقا في العالم",
+    "fun_fact": "الأمازون يصب في الأطلسي"
+  },
+  {
+    "id": "geo_096",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر ببغداد",
+    "accepted_answers": [
+      "دجلة",
+      "نهر دجلة",
+      "Tigris"
+    ],
+    "hint": "مع الفرات يكون بلاد الرافدين",
+    "fun_fact": "دجلة ينبع من تركيا"
+  },
+  {
+    "id": "geo_097",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بحلب وحمص",
+    "accepted_answers": [
+      "الفرات",
+      "نهر الفرات",
+      "Euphrates"
+    ],
+    "hint": "مع دجلة في العراق",
+    "fun_fact": "الفرات من أنهار الجنة في التراث"
+  },
+  {
+    "id": "geo_098",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بباريس",
+    "accepted_answers": [
+      "السين",
+      "نهر السين",
+      "Seine"
+    ],
+    "hint": "في شمال فرنسا",
+    "fun_fact": "السين يقسم باريس لضفتين"
+  },
+  {
+    "id": "geo_099",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بلندن",
+    "accepted_answers": [
+      "التايمز",
+      "التيمز",
+      "Thames"
+    ],
+    "hint": "في جنوب إنجلترا",
+    "fun_fact": "التايمز كان ملوثا ثم تعافى"
+  },
+  {
+    "id": "geo_100",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر ببودابست وفيينا",
+    "accepted_answers": [
+      "الدانوب",
+      "نهر الدانوب",
+      "Danube"
+    ],
+    "hint": "ثاني أطول أنهار أوروبا",
+    "fun_fact": "الدانوب يمر بعشر دول"
+  },
+  {
+    "id": "geo_101",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بالخرطوم",
+    "accepted_answers": [
+      "النيل",
+      "نهر النيل",
+      "Nile"
+    ],
+    "hint": "ملتقى الأزرق والأبيض",
+    "fun_fact": "الخرطوم عند التقاء النيلين"
+  },
+  {
+    "id": "geo_102",
+    "category": "geography",
+    "prompt": "ما أكبر محيط في العالم",
+    "accepted_answers": [
+      "المحيط الهادئ",
+      "الهادئ",
+      "Pacific"
+    ],
+    "hint": "بين آسيا وأمريكا",
+    "fun_fact": "الهادئ يغطي ثلث الأرض"
+  },
+  {
+    "id": "geo_103",
+    "category": "geography",
+    "prompt": "ما أصغر محيط في العالم",
+    "accepted_answers": [
+      "المحيط المتجمد الشمالي",
+      "المتجمد الشمالي",
+      "Arctic"
+    ],
+    "hint": "حول القطب الشمالي",
+    "fun_fact": "المتجمد الشمالي معظمه جليد"
+  },
+  {
+    "id": "geo_104",
+    "category": "geography",
+    "prompt": "ما البحر الذي يفصل بين أوروبا وإفريقيا",
+    "accepted_answers": [
+      "البحر المتوسط",
+      "المتوسط",
+      "Mediterranean"
+    ],
+    "hint": "مصر وليبيا عليه",
+    "fun_fact": "المتوسط كان مركز العالم القديم"
+  },
+  {
+    "id": "geo_105",
+    "category": "geography",
+    "prompt": "ما البحر الذي بين السعودية ومصر",
+    "accepted_answers": [
+      "البحر الأحمر",
+      "الاحمر",
+      "Red Sea"
+    ],
+    "hint": "به شرم الشيخ",
+    "fun_fact": "الأحمر من أجمل بحار الغوص"
+  },
+  {
+    "id": "geo_106",
+    "category": "geography",
+    "prompt": "ما الخليج بين إيران والجزيرة العربية",
+    "accepted_answers": [
+      "الخليج العربي",
+      "الخليج",
+      "Arabian Gulf"
+    ],
+    "hint": "به نفط كثير",
+    "fun_fact": "الخليج العربي ضحل نسبيا"
+  },
+  {
+    "id": "geo_107",
+    "category": "geography",
+    "prompt": "ما المحيط الذي يطل عليه المغرب غربا",
+    "accepted_answers": [
+      "المحيط الأطلسي",
+      "الأطلسي",
+      "Atlantic"
+    ],
+    "hint": "ثاني أكبر محيط",
+    "fun_fact": "الأطلسي سمي بجبال أطلس"
+  },
+  {
+    "id": "geo_108",
+    "category": "geography",
+    "prompt": "ما البحر المغلق الأعلى ملوحة بين الأردن وفلسطين",
+    "accepted_answers": [
+      "البحر الميت",
+      "الميت",
+      "Dead Sea"
+    ],
+    "hint": "أخفض بقعة على اليابسة",
+    "fun_fact": "الميت لا تعيش فيه الأسماك"
+  },
+  {
+    "id": "geo_109",
+    "category": "geography",
+    "prompt": "ما القناة التي تربط البحرين الأحمر والمتوسط",
+    "accepted_answers": [
+      "قناة السويس",
+      "السويس",
+      "Suez"
+    ],
+    "hint": "في مصر",
+    "fun_fact": "السويس افتتحت 1869"
+  },
+  {
+    "id": "geo_110",
+    "category": "geography",
+    "prompt": "ما القناة التي تربط الأطلسي بالهادئ",
+    "accepted_answers": [
+      "قناة بنما",
+      "بنما",
+      "Panama"
+    ],
+    "hint": "في أمريكا الوسطى",
+    "fun_fact": "بنما افتتحت 1914"
+  },
+  {
+    "id": "geo_111",
+    "category": "geography",
+    "prompt": "ما أكبر بحيرة عذبة في إفريقيا",
+    "accepted_answers": [
+      "بحيرة فيكتوريا",
+      "فيكتوريا",
+      "Victoria"
+    ],
+    "hint": "بين ثلاث دول",
+    "fun_fact": "فيكتوريا منبع النيل الأبيض"
+  },
+  {
+    "id": "geo_112",
+    "category": "geography",
+    "prompt": "ما أعمق بحيرة في العالم",
+    "accepted_answers": [
+      "بحيرة بايكال",
+      "بايكال",
+      "Baikal"
+    ],
+    "hint": "في سيبيريا",
+    "fun_fact": "بايكال بها خمس الماء العذب"
+  },
+  {
+    "id": "geo_113",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بالهند ومقدس عند الهندوس",
+    "accepted_answers": [
+      "الجانج",
+      "الغنج",
+      "Ganges"
+    ],
+    "hint": "ينبع من الهيمالايا",
+    "fun_fact": "الجانج أقدس أنهار الهند"
+  },
+  {
+    "id": "geo_114",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بالصين ويسمى الأصفر",
+    "accepted_answers": [
+      "النهر الأصفر",
+      "هوانج هو",
+      "Yellow River"
+    ],
+    "hint": "ثاني أنهار الصين",
+    "fun_fact": "الأصفر مهد الحضارة الصينية"
+  },
+  {
+    "id": "geo_115",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بمصر والسودان وإثيوبيا",
+    "accepted_answers": [
+      "النيل",
+      "نهر النيل",
+      "Nile"
+    ],
+    "hint": "أطول أنهار العالم",
+    "fun_fact": "النيل له رافدان أزرق وأبيض"
+  },
+  {
+    "id": "geo_116",
+    "category": "geography",
+    "prompt": "ما البحر الذي تقع عليه مدينة جدة",
+    "accepted_answers": [
+      "البحر الأحمر",
+      "الاحمر",
+      "Red Sea"
+    ],
+    "hint": "غرب السعودية",
+    "fun_fact": "جدة بوابة مكة البحرية"
+  },
+  {
+    "id": "geo_117",
+    "category": "geography",
+    "prompt": "ما الخليج الذي تقع عليه مدينة الدوحة",
+    "accepted_answers": [
+      "الخليج العربي",
+      "الخليج",
+      "Arabian Gulf"
+    ],
+    "hint": "شرق قطر",
+    "fun_fact": "الدوحة كورنيشها على الخليج"
+  },
+  {
+    "id": "geo_118",
+    "category": "geography",
+    "prompt": "ما المحيط الذي تقع عليه مدينة سيدني",
+    "accepted_answers": [
+      "المحيط الهادئ",
+      "الهادئ",
+      "Pacific"
+    ],
+    "hint": "شرق أستراليا",
+    "fun_fact": "سيدني أشهر مدن أستراليا"
+  },
+  {
+    "id": "geo_119",
+    "category": "geography",
+    "prompt": "ما النهر الذي يصب في الخليج العربي ويلتقي فيه دجلة والفرات",
+    "accepted_answers": [
+      "شط العرب",
+      "Shatt al Arab"
+    ],
+    "hint": "جنوب العراق",
+    "fun_fact": "شط العرب ممر مائي مهم"
+  },
+  {
+    "id": "geo_120",
+    "category": "geography",
+    "prompt": "ما أكبر شلالات في أمريكا الشمالية بين كندا وأمريكا",
+    "accepted_answers": [
+      "شلالات نياجرا",
+      "نياجرا",
+      "Niagara"
+    ],
+    "hint": "على الحدود",
+    "fun_fact": "نياجرا مصدر كهرباء مهم"
+  },
+  {
+    "id": "geo_121",
+    "category": "geography",
+    "prompt": "ما أعلى شلالات في العالم في فنزويلا",
+    "accepted_answers": [
+      "شلالات أنجل",
+      "انجل",
+      "Angel"
+    ],
+    "hint": "في غابات فنزويلا",
+    "fun_fact": "أنجل ارتفاعها حوالي كيلومتر"
+  },
+  {
+    "id": "geo_122",
+    "category": "geography",
+    "prompt": "ما المضيق الذي يربط الخليج العربي بخليج عمان",
+    "accepted_answers": [
+      "مضيق هرمز",
+      "هرمز",
+      "Hormuz"
+    ],
+    "hint": "بين عمان وإيران",
+    "fun_fact": "هرمز أهم مضيق نفطي"
+  },
+  {
+    "id": "geo_123",
+    "category": "geography",
+    "prompt": "ما المضيق بين البحر الأحمر وخليج عدن",
+    "accepted_answers": [
+      "مضيق باب المندب",
+      "باب المندب",
+      "Bab el Mandeb"
+    ],
+    "hint": "قرب اليمن",
+    "fun_fact": "باب المندب بوابة البحر الأحمر"
+  },
+  {
+    "id": "geo_124",
+    "category": "geography",
+    "prompt": "ما البحر الذي يفصل بين بريطانيا وفرنسا",
+    "accepted_answers": [
+      "بحر المانش",
+      "المانش",
+      "English Channel"
+    ],
+    "hint": "به نفق شهير",
+    "fun_fact": "المانش أنفق تحته قطار"
+  },
+  {
+    "id": "geo_125",
+    "category": "geography",
+    "prompt": "ما البحر الذي بين اليابان وكوريا",
+    "accepted_answers": [
+      "بحر اليابان",
+      "Sea of Japan"
+    ],
+    "hint": "غرب اليابان",
+    "fun_fact": "بحر اليابان غني بالأسماك"
+  },
+  {
+    "id": "geo_126",
+    "category": "geography",
+    "prompt": "ما أكبر خليج في العالم في شمال المحيط الهندي",
+    "accepted_answers": [
+      "خليج البنغال",
+      "البنغال",
+      "Bay of Bengal"
+    ],
+    "hint": "قرب الهند",
+    "fun_fact": "البنغال يتعرض للأعاصير"
+  },
+  {
+    "id": "geo_127",
+    "category": "geography",
+    "prompt": "ما البحر الداخلي بين أوروبا وآسيا الأكبر في العالم",
+    "accepted_answers": [
+      "بحر قزوين",
+      "قزوين",
+      "Caspian"
+    ],
+    "hint": "بين خمس دول",
+    "fun_fact": "قزوين أكبر بحيرة مغلقة"
+  },
+  {
+    "id": "geo_128",
+    "category": "geography",
+    "prompt": "ما النهر الأوروبي الذي يصب في بحر قزوين",
+    "accepted_answers": [
+      "الفولجا",
+      "الفولغا",
+      "Volga"
+    ],
+    "hint": "أطول أنهار أوروبا",
+    "fun_fact": "الفولجا في روسيا"
+  },
+  {
+    "id": "geo_129",
+    "category": "geography",
+    "prompt": "ما المحيط الذي يحد الهند غربا",
+    "accepted_answers": [
+      "المحيط الهندي",
+      "الهندي",
+      "Indian"
+    ],
+    "hint": "ثالث المحيطات",
+    "fun_fact": "الهندي سمي باسم الهند"
+  },
+  {
+    "id": "geo_130",
+    "category": "geography",
+    "prompt": "ما البحر الذي تقع عليه الإسكندرية",
+    "accepted_answers": [
+      "البحر المتوسط",
+      "المتوسط",
+      "Mediterranean"
+    ],
+    "hint": "شمال مصر",
+    "fun_fact": "الإسكندرية عروس المتوسط"
+  },
+  {
+    "id": "geo_131",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بمدينة روما",
+    "accepted_answers": [
+      "التيبر",
+      "Tiber"
+    ],
+    "hint": "في إيطاليا",
+    "fun_fact": "التيبر ثالث أنهار إيطاليا"
+  },
+  {
+    "id": "geo_132",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بمدينة برلين",
+    "accepted_answers": [
+      "شبريه",
+      "Spree"
+    ],
+    "hint": "في ألمانيا",
+    "fun_fact": "برلين على ضفتي شبريه"
+  },
+  {
+    "id": "geo_133",
+    "category": "geography",
+    "prompt": "ما النهر الذي يمر بمدينة القاهرة",
+    "accepted_answers": [
+      "النيل",
+      "نهر النيل",
+      "Nile"
+    ],
+    "hint": "شريان مصر",
+    "fun_fact": "النيل يكون الدلتا شمال القاهرة"
+  },
+  {
+    "id": "geo_134",
+    "category": "geography",
+    "prompt": "ما أعلى قمة في العالم",
+    "accepted_answers": [
+      "إفرست",
+      "ايفرست",
+      "Everest"
+    ],
+    "hint": "في الهيمالايا",
+    "fun_fact": "إفرست ارتفاعها 8848 مترا"
+  },
+  {
+    "id": "geo_135",
+    "category": "geography",
+    "prompt": "ما أعلى قمة في إفريقيا",
+    "accepted_answers": [
+      "كليمنجارو",
+      "Kilimanjaro"
+    ],
+    "hint": "في تنزانيا",
+    "fun_fact": "كليمنجارو بركان خامد مغطى بالثلج"
+  },
+  {
+    "id": "geo_136",
+    "category": "geography",
+    "prompt": "ما أعلى قمة في أوروبا",
+    "accepted_answers": [
+      "إلبروس",
+      "Elbrus"
+    ],
+    "hint": "في القوقاز بروسيا",
+    "fun_fact": "إلبروس بركان خامد"
+  },
+  {
+    "id": "geo_137",
+    "category": "geography",
+    "prompt": "ما سلسلة الجبال التي تفصل بين إسبانيا وفرنسا",
+    "accepted_answers": [
+      "البرانس",
+      "البرينيه",
+      "Pyrenees"
+    ],
+    "hint": "جنوب غرب أوروبا",
+    "fun_fact": "البرانس بها دولة أندورا"
+  },
+  {
+    "id": "geo_138",
+    "category": "geography",
+    "prompt": "ما سلسلة الجبال التي تمتد في غرب أمريكا الجنوبية",
+    "accepted_answers": [
+      "الأنديز",
+      "الانديز",
+      "Andes"
+    ],
+    "hint": "أطول سلسلة جبلية",
+    "fun_fact": "الأنديز بها قمة أكونكاجوا"
+  },
+  {
+    "id": "geo_139",
+    "category": "geography",
+    "prompt": "ما سلسلة الجبال التي بها إفرست",
+    "accepted_answers": [
+      "الهيمالايا",
+      "الهملايا",
+      "Himalayas"
+    ],
+    "hint": "بين الهند والتبت",
+    "fun_fact": "الهيمالايا تعني مسكن الثلج"
+  },
+  {
+    "id": "geo_140",
+    "category": "geography",
+    "prompt": "ما سلسلة الجبال في شمال إفريقيا بالمغرب والجزائر",
+    "accepted_answers": [
+      "جبال أطلس",
+      "اطلس",
+      "Atlas"
+    ],
+    "hint": "غرب شمال إفريقيا",
+    "fun_fact": "أطلس سمي بعملاق الأساطير"
+  },
+  {
+    "id": "geo_141",
+    "category": "geography",
+    "prompt": "ما أكبر صحراء حارة في العالم",
+    "accepted_answers": [
+      "الصحراء الكبرى",
+      "الصحراء",
+      "Sahara"
+    ],
+    "hint": "في شمال إفريقيا",
+    "fun_fact": "الصحراء بحجم أمريكا تقريبا"
+  },
+  {
+    "id": "geo_142",
+    "category": "geography",
+    "prompt": "ما أكبر صحراء في الجزيرة العربية",
+    "accepted_answers": [
+      "الربع الخالي",
+      "Empty Quarter"
+    ],
+    "hint": "بين أربع دول",
+    "fun_fact": "الربع الخالي من أكبر الصحارى الرملية"
+  },
+  {
+    "id": "geo_143",
+    "category": "geography",
+    "prompt": "ما الصحراء التي تقع في جنوب غرب إفريقيا",
+    "accepted_answers": [
+      "ناميب",
+      "Namib"
+    ],
+    "hint": "في ناميبيا",
+    "fun_fact": "ناميب من أقدم صحارى العالم"
+  },
+  {
+    "id": "geo_144",
+    "category": "geography",
+    "prompt": "ما الجبل المقدس في سيناء بمصر",
+    "accepted_answers": [
+      "جبل موسى",
+      "طور سيناء",
+      "Sinai"
+    ],
+    "hint": "في جنوب سيناء",
+    "fun_fact": "جبل موسى يزوره السياح للشروق"
+  },
+  {
+    "id": "geo_145",
+    "category": "geography",
+    "prompt": "ما الجبل الذي في مكة وتوجد فيه غار حراء",
+    "accepted_answers": [
+      "جبل النور",
+      "النور",
+      "Jabal al Nour"
+    ],
+    "hint": "شرق مكة",
+    "fun_fact": "غار حراء نزل فيه الوحي"
+  },
+  {
+    "id": "geo_146",
+    "category": "geography",
+    "prompt": "ما البركان الإيطالي الشهير قرب نابولي",
+    "accepted_answers": [
+      "فيزوف",
+      "Vesuvius"
+    ],
+    "hint": "دمر بومبي",
+    "fun_fact": "فيزوف ثورانه حفظ مدينة رومانية"
+  },
+  {
+    "id": "geo_147",
+    "category": "geography",
+    "prompt": "ما بركان اليابان المقدس الشهير",
+    "accepted_answers": [
+      "فوجي",
+      "Fuji"
+    ],
+    "hint": "رمز اليابان",
+    "fun_fact": "فوجي يظهر في الفن الياباني"
+  },
+  {
+    "id": "geo_148",
+    "category": "geography",
+    "prompt": "ما أخفض بقعة على سطح الأرض",
+    "accepted_answers": [
+      "البحر الميت",
+      "Dead Sea"
+    ],
+    "hint": "بين الأردن وفلسطين",
+    "fun_fact": "البحر الميت 430 مترا تحت البحر"
+  },
+  {
+    "id": "geo_149",
+    "category": "geography",
+    "prompt": "ما الوادي العظيم في أمريكا",
+    "accepted_answers": [
+      "جراند كانيون",
+      "Grand Canyon"
+    ],
+    "hint": "في أريزونا",
+    "fun_fact": "جراند كانيون نحته نهر كولورادو"
+  },
+  {
+    "id": "geo_150",
+    "category": "geography",
+    "prompt": "ما الهضبة التي تسمى سقف العالم",
+    "accepted_answers": [
+      "هضبة التبت",
+      "التبت",
+      "Tibet"
+    ],
+    "hint": "في آسيا الوسطى",
+    "fun_fact": "التبت أعلى هضاب العالم"
+  },
+  {
+    "id": "geo_151",
+    "category": "geography",
+    "prompt": "ما القارة المتجمدة الجنوبية",
+    "accepted_answers": [
+      "أنتاركتيكا",
+      "القارة القطبية الجنوبية",
+      "Antarctica"
+    ],
+    "hint": "أبرد قارات العالم",
+    "fun_fact": "أنتاركتيكا بلا سكان دائمين"
+  },
+  {
+    "id": "geo_152",
+    "category": "geography",
+    "prompt": "ما الدولة الجبلية الصغيرة بين فرنسا وإسبانيا",
+    "accepted_answers": [
+      "أندورا",
+      "Andorra"
+    ],
+    "hint": "في البرانس",
+    "fun_fact": "أندورا تعيش على السياحة"
+  },
+  {
+    "id": "geo_153",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها كاتماندو في الهيمالايا",
+    "accepted_answers": [
+      "نيبال",
+      "Nepal"
+    ],
+    "hint": "بها إفرست",
+    "fun_fact": "نيبال علمها غير مستطيل"
+  },
+  {
+    "id": "geo_154",
+    "category": "geography",
+    "prompt": "ما الجبل الذي سميت عليه مدينة الطائف قريبة منه",
+    "accepted_answers": [
+      "جبل الهدا",
+      "الهدا",
+      "Al Hada"
+    ],
+    "hint": "غرب السعودية",
+    "fun_fact": "الهدا طريق جبلي متعرج شهير"
+  },
+  {
+    "id": "geo_155",
+    "category": "geography",
+    "prompt": "ما أكبر جزيرة بركانية في المحيط الأطلسي",
+    "accepted_answers": [
+      "آيسلندا",
+      "ايسلندا",
+      "Iceland"
+    ],
+    "hint": "أرض النار والجليد",
+    "fun_fact": "آيسلندا بها شلالات وبراكين"
+  },
+  {
+    "id": "geo_156",
+    "category": "geography",
+    "prompt": "ما الصحراء البيضاء الشهيرة في مصر",
+    "accepted_answers": [
+      "الصحراء البيضاء",
+      "White Desert"
+    ],
+    "hint": "في الوادي الجديد",
+    "fun_fact": "الصحراء البيضاء صخورها كالتماثيل"
+  },
+  {
+    "id": "geo_157",
+    "category": "geography",
+    "prompt": "ما شبه الجزيرة التي تقع فيها السعودية",
+    "accepted_answers": [
+      "شبه الجزيرة العربية",
+      "الجزيرة العربية",
+      "Arabian Peninsula"
+    ],
+    "hint": "أكبر شبه جزيرة",
+    "fun_fact": "الجزيرة العربية مهد الإسلام"
+  },
+  {
+    "id": "geo_158",
+    "category": "geography",
+    "prompt": "ما شبه الجزيرة التي تقع فيها إسبانيا والبرتغال",
+    "accepted_answers": [
+      "شبه الجزيرة الأيبيرية",
+      "ايبيريا",
+      "Iberia"
+    ],
+    "hint": "جنوب غرب أوروبا",
+    "fun_fact": "الأيبيرية سميت بقبائل قديمة"
+  },
+  {
+    "id": "geo_159",
+    "category": "geography",
+    "prompt": "ما الجبل الذي يطل على مدينة Rio بلد السامبا",
+    "accepted_answers": [
+      "جبل كوركوفادو",
+      "كوركوفادو",
+      "Corcovado"
+    ],
+    "hint": "عليه تمثال المسيح",
+    "fun_fact": "كوركوفادو من عجائب الدنيا الجديدة"
+  },
+  {
+    "id": "geo_160",
+    "category": "geography",
+    "prompt": "ما السهل الساحلي المصري على المتوسط",
+    "accepted_answers": [
+      "الساحل الشمالي",
+      "North Coast"
+    ],
+    "hint": "غرب الإسكندرية",
+    "fun_fact": "الساحل الشمالي مصيف شهير"
+  },
+  {
+    "id": "geo_161",
+    "category": "geography",
+    "prompt": "ما أكبر واحة في السعودية",
+    "accepted_answers": [
+      "الأحساء",
+      "الاحساء",
+      "Al Ahsa"
+    ],
+    "hint": "في الشرقية",
+    "fun_fact": "الأحساء أكبر واحات العالم"
+  },
+  {
+    "id": "geo_162",
+    "category": "geography",
+    "prompt": "ما الجبل الأصفر الصيني المقدس",
+    "accepted_answers": [
+      "هوانجشان",
+      "Huangshan"
+    ],
+    "hint": "شرق الصين",
+    "fun_fact": "هوانجشان لوحاتها شهيرة بالضباب"
+  },
+  {
+    "id": "geo_163",
+    "category": "geography",
+    "prompt": "ما القمة الأعلى في أمريكا الشمالية في ألاسكا",
+    "accepted_answers": [
+      "دينالي",
+      "ماكينلي",
+      "Denali"
+    ],
+    "hint": "في ألاسكا",
+    "fun_fact": "دينالي كانت تسمى ماكينلي"
+  },
+  {
+    "id": "geo_164",
+    "category": "geography",
+    "prompt": "كم عدد قارات العالم",
+    "accepted_answers": [
+      "سبع",
+      "سبعة",
+      "7",
+      "Seven"
+    ],
+    "hint": "أكبرها آسيا",
+    "fun_fact": "القارات سبع وأكبرها آسيا"
+  },
+  {
+    "id": "geo_165",
+    "category": "geography",
+    "prompt": "ما أكبر قارات العالم",
+    "accepted_answers": [
+      "آسيا",
+      "اسيا",
+      "Asia"
+    ],
+    "hint": "بها الصين والهند",
+    "fun_fact": "آسيا بها معظم سكان العالم"
+  },
+  {
+    "id": "geo_166",
+    "category": "geography",
+    "prompt": "ما أصغر قارات العالم",
+    "accepted_answers": [
+      "أستراليا",
+      "استراليا",
+      "Australia"
+    ],
+    "hint": "دولة وقارة معا",
+    "fun_fact": "أستراليا أصغر قارة وأكبر جزيرة"
+  },
+  {
+    "id": "geo_167",
+    "category": "geography",
+    "prompt": "ما الدولة التي تسمى بلاد الشمس المشرقة",
+    "accepted_answers": [
+      "اليابان",
+      "Japan"
+    ],
+    "hint": "شرق آسيا",
+    "fun_fact": "اليابان أرخبيل من آلاف الجزر"
+  },
+  {
+    "id": "geo_168",
+    "category": "geography",
+    "prompt": "ما الدولة التي تسمى بلاد الكنغر",
+    "accepted_answers": [
+      "أستراليا",
+      "Australia"
+    ],
+    "hint": "قارة لوحدها",
+    "fun_fact": "أستراليا بها حيوانات لا توجد بغيرها"
+  },
+  {
+    "id": "geo_169",
+    "category": "geography",
+    "prompt": "ما الدولة التي تسمى أرض الفراعنة",
+    "accepted_answers": [
+      "مصر",
+      "Egypt"
+    ],
+    "hint": "على النيل",
+    "fun_fact": "مصر بها ثلث آثار العالم"
+  },
+  {
+    "id": "geo_170",
+    "category": "geography",
+    "prompt": "ما الدولة التي تسمى بلاد الرافدين",
+    "accepted_answers": [
+      "العراق",
+      "Iraq"
+    ],
+    "hint": "بين دجلة والفرات",
+    "fun_fact": "العراق أول كتابة في التاريخ"
+  },
+  {
+    "id": "geo_171",
+    "category": "geography",
+    "prompt": "ما الدولة التي تسمى أرض الحرمين",
+    "accepted_answers": [
+      "السعودية",
+      "Saudi Arabia"
+    ],
+    "hint": "بها مكة والمدينة",
+    "fun_fact": "السعودية أكبر دول الجزيرة"
+  },
+  {
+    "id": "geo_172",
+    "category": "geography",
+    "prompt": "ما الجزيرة الإسبانية الشهيرة للسياحة بالمتوسط",
+    "accepted_answers": [
+      "مايوركا",
+      "Mallorca"
+    ],
+    "hint": "جزر البليار",
+    "fun_fact": "مايوركا وجهة أوروبية شهيرة"
+  },
+  {
+    "id": "geo_173",
+    "category": "geography",
+    "prompt": "ما الجزيرة الإيطالية التي بها بركان إتنا",
+    "accepted_answers": [
+      "صقلية",
+      "Sicily"
+    ],
+    "hint": "جنوب إيطاليا",
+    "fun_fact": "صقلية أكبر جزر المتوسط"
+  },
+  {
+    "id": "geo_174",
+    "category": "geography",
+    "prompt": "ما الجزيرة اليونانية الشهيرة بالبيوت البيضاء",
+    "accepted_answers": [
+      "سانتوريني",
+      "Santorini"
+    ],
+    "hint": "بركانية في إيجة",
+    "fun_fact": "سانتوريني غروبها من الأجمل"
+  },
+  {
+    "id": "geo_175",
+    "category": "geography",
+    "prompt": "ما أكبر جزر إندونيسيا سكانا",
+    "accepted_answers": [
+      "جاوة",
+      "Java"
+    ],
+    "hint": "عليها جاكرتا",
+    "fun_fact": "جاوة من أكثر جزر العالم سكانا"
+  },
+  {
+    "id": "geo_176",
+    "category": "geography",
+    "prompt": "ما الجزيرة التي تقع عليها مدينة نيويورك جزئيا",
+    "accepted_answers": [
+      "مانهاتن",
+      "Manhattan"
+    ],
+    "hint": "بين نهرين",
+    "fun_fact": "مانهاتن أشهر أحياء العالم"
+  },
+  {
+    "id": "geo_177",
+    "category": "geography",
+    "prompt": "ما الدولة الجزيرة جنوب الهند في المحيط الهندي",
+    "accepted_answers": [
+      "سريلانكا",
+      "Sri Lanka"
+    ],
+    "hint": "دمعتها الهند",
+    "fun_fact": "سريلانكا كانت تسمى سيلان"
+  },
+  {
+    "id": "geo_178",
+    "category": "geography",
+    "prompt": "ما الدولة الجزيرة قرب مدغشقر",
+    "accepted_answers": [
+      "جزر القمر",
+      "القمر",
+      "Comoros"
+    ],
+    "hint": "في المحيط الهندي",
+    "fun_fact": "القمر دولة عربية إفريقية"
+  },
+  {
+    "id": "geo_179",
+    "category": "geography",
+    "prompt": "ما أكبر جزيرة إفريقية",
+    "accepted_answers": [
+      "مدغشقر",
+      "Madagascar"
+    ],
+    "hint": "شرق إفريقيا",
+    "fun_fact": "مدغشقر بها حيوان الليمور"
+  },
+  {
+    "id": "geo_180",
+    "category": "geography",
+    "prompt": "ما الدولة التي تتكون من جزيرتين رئيسيتين في أوروبا",
+    "accepted_answers": [
+      "بريطانيا",
+      "المملكة المتحدة",
+      "UK"
+    ],
+    "hint": "في الأطلسي",
+    "fun_fact": "بريطانيا كانت إمبراطورية كبرى"
+  },
+  {
+    "id": "geo_181",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها ويلينغتون في المحيط الهادئ",
+    "accepted_answers": [
+      "نيوزيلندا",
+      "New Zealand"
+    ],
+    "hint": "جنوب شرق أستراليا",
+    "fun_fact": "نيوزيلندا أرض السحاب الطويل"
+  },
+  {
+    "id": "geo_182",
+    "category": "geography",
+    "prompt": "ما الدولة الكاريبية التي عاصمتها هافانا",
+    "accepted_answers": [
+      "كوبا",
+      "Cuba"
+    ],
+    "hint": "أكبر جزر الكاريبي",
+    "fun_fact": "كوبا مشهورة بالسيجار"
+  },
+  {
+    "id": "geo_183",
+    "category": "geography",
+    "prompt": "ما خط الطول الرئيسي الذي يمر بجرينتش",
+    "accepted_answers": [
+      "خط جرينتش",
+      "جرينتش",
+      "Greenwich"
+    ],
+    "hint": "درجته صفر",
+    "fun_fact": "جرينتش مرجع التوقيت العالمي"
+  },
+  {
+    "id": "geo_184",
+    "category": "geography",
+    "prompt": "ما دائرة العرض التي تقسم الأرض شمالا وجنوبا",
+    "accepted_answers": [
+      "خط الاستواء",
+      "الاستواء",
+      "Equator"
+    ],
+    "hint": "درجته صفر",
+    "fun_fact": "الاستواء حار طوال السنة"
+  },
+  {
+    "id": "geo_185",
+    "category": "geography",
+    "prompt": "ما مدار الشمالي الذي يمر بجنوب مصر والسعودية",
+    "accepted_answers": [
+      "مدار السرطان",
+      "السرطان",
+      "Tropic of Cancer"
+    ],
+    "hint": "شمال الاستواء",
+    "fun_fact": "السرطان يمر بصحراء كبرى"
+  },
+  {
+    "id": "geo_186",
+    "category": "geography",
+    "prompt": "ما القطب الأبرد في العالم",
+    "accepted_answers": [
+      "القطب الجنوبي",
+      "South Pole"
+    ],
+    "hint": "في أنتاركتيكا",
+    "fun_fact": "الجنوبي أبرد من الشمالي"
+  },
+  {
+    "id": "geo_187",
+    "category": "geography",
+    "prompt": "ما الدولة التي يقع فيها سور الصين العظيم",
+    "accepted_answers": [
+      "الصين",
+      "China"
+    ],
+    "hint": "شمالها",
+    "fun_fact": "السور من عجائب الدنيا"
+  },
+  {
+    "id": "geo_188",
+    "category": "geography",
+    "prompt": "ما المدينة المغربية الزرقاء الشهيرة",
+    "accepted_answers": [
+      "شفشاون",
+      "Chefchaouen"
+    ],
+    "hint": "في جبال الريف",
+    "fun_fact": "شفشاون بيوتها زرقاء"
+  },
+  {
+    "id": "geo_189",
+    "category": "geography",
+    "prompt": "ما المدينة التي بها برج بيزا المائل",
+    "accepted_answers": [
+      "بيزا",
+      "Pisa"
+    ],
+    "hint": "في إيطاليا",
+    "fun_fact": "بيزا ميلانه بسبب التربة"
+  },
+  {
+    "id": "geo_190",
+    "category": "geography",
+    "prompt": "ما المدينة الإماراتية التي بها برج خليفة",
+    "accepted_answers": [
+      "دبي",
+      "Dubai"
+    ],
+    "hint": "على الخليج",
+    "fun_fact": "برج خليفة 828 مترا"
+  },
+  {
+    "id": "geo_191",
+    "category": "geography",
+    "prompt": "ما المدينة السعودية التي بها الكعبة",
+    "accepted_answers": [
+      "مكة",
+      "مكة المكرمة",
+      "Mecca"
+    ],
+    "hint": "غرب المملكة",
+    "fun_fact": "مكة قبلة المسلمين"
+  },
+  {
+    "id": "geo_192",
+    "category": "geography",
+    "prompt": "ما المدينة التي بها المسجد النبوي",
+    "accepted_answers": [
+      "المدينة",
+      "المدينة المنورة",
+      "Medina"
+    ],
+    "hint": "شمال مكة",
+    "fun_fact": "المدينة ثاني الحرمين"
+  },
+  {
+    "id": "geo_193",
+    "category": "geography",
+    "prompt": "ما المدينة المصرية التي بها الأهرامات",
+    "accepted_answers": [
+      "الجيزة",
+      "Giza"
+    ],
+    "hint": "غرب القاهرة",
+    "fun_fact": "أهرامات الجيزة من عجائب الدنيا"
+  },
+  {
+    "id": "geo_194",
+    "category": "geography",
+    "prompt": "ما عاصمة إثيوبيا",
+    "accepted_answers": [
+      "أديس أبابا",
+      "اديس ابابا",
+      "Addis Ababa"
+    ],
+    "hint": "مقر الاتحاد الإفريقي",
+    "fun_fact": "أديس أبابا تعني الزهرة الجديدة"
+  },
+  {
+    "id": "geo_195",
+    "category": "geography",
+    "prompt": "ما عاصمة كينيا",
+    "accepted_answers": [
+      "نيروبي",
+      "Nairobi"
+    ],
+    "hint": "قربها محمية وطنية",
+    "fun_fact": "نيروبي تسمى مدينة السفاري"
+  },
+  {
+    "id": "geo_196",
+    "category": "geography",
+    "prompt": "ما عاصمة السنغال",
+    "accepted_answers": [
+      "داكار",
+      "Dakar"
+    ],
+    "hint": "أقصى غرب إفريقيا",
+    "fun_fact": "داكار مشهورة برالي باريس داكار"
+  },
+  {
+    "id": "geo_197",
+    "category": "geography",
+    "prompt": "ما أكبر بحيرة في أمريكا الشمالية",
+    "accepted_answers": [
+      "بحيرة سوبيريور",
+      "سوبيريور",
+      "Superior"
+    ],
+    "hint": "بين أمريكا وكندا",
+    "fun_fact": "سوبيريور أكبر بحيرة عذبة بالمساحة"
+  },
+  {
+    "id": "geo_198",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها ليما على المحيط الهادئ",
+    "accepted_answers": [
+      "بيرو",
+      "Peru"
+    ],
+    "hint": "بها آثار ماتشو بيتشو",
+    "fun_fact": "بيرو مهد حضارة الإنكا"
+  },
+  {
+    "id": "geo_199",
+    "category": "geography",
+    "prompt": "ما الدولة التي عاصمتها سانتياجو وتمتد طوليا",
+    "accepted_answers": [
+      "تشيلي",
+      "Chile"
+    ],
+    "hint": "أطول دول العالم",
+    "fun_fact": "تشيلي بها صحراء أتاكاما الأجف"
+  },
+  {
+    "id": "geo_200",
+    "category": "geography",
+    "prompt": "ما الدولة الأوروبية التي عاصمتها بودابست على الدانوب",
+    "accepted_answers": [
+      "المجر",
+      "هنغاريا",
+      "Hungary"
+    ],
+    "hint": "في وسط أوروبا",
+    "fun_fact": "بودابست كانت مدينتين بودا وبست"
+  }
+]

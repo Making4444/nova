@@ -33,22 +33,38 @@ func NewBankManager(dataDir string) *BankManager {
 	return bm
 }
 
-// LoadAll scans the questions directory and populates the question bank.
+// LoadAll scans the questions directories and populates the question bank.
 func (bm *BankManager) LoadAll() {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 
 	bm.categories = make(map[Category][]Question)
 	bm.allQuestions = make([]Question, 0)
+	seenIDs := make(map[string]bool)
 
-	entries, err := os.ReadDir(bm.questionsDir)
-	if err == nil {
+	// List of directories to search for question JSON files:
+	// 1. Primary questions directory: data/games/questions
+	// 2. Optional root questions directory: questions
+	searchDirs := []string{bm.questionsDir}
+	rootQuestionsDir := "questions"
+	if absRoot, err := filepath.Abs(rootQuestionsDir); err == nil {
+		if absPrimary, err := filepath.Abs(bm.questionsDir); err == nil && absRoot != absPrimary {
+			searchDirs = append(searchDirs, rootQuestionsDir)
+		}
+	}
+
+	for _, dir := range searchDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+
 		for _, entry := range entries {
 			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 				continue
 			}
 
-			filePath := filepath.Join(bm.questionsDir, entry.Name())
+			filePath := filepath.Join(dir, entry.Name())
 			data, err := os.ReadFile(filePath)
 			if err != nil {
 				continue
@@ -62,6 +78,15 @@ func (bm *BankManager) LoadAll() {
 			}
 
 			for _, q := range qs {
+				if q.Prompt == "" || len(q.AcceptedAnswers) == 0 {
+					continue
+				}
+				if q.ID != "" && seenIDs[q.ID] {
+					continue
+				}
+				if q.ID != "" {
+					seenIDs[q.ID] = true
+				}
 				bm.categories[q.Category] = append(bm.categories[q.Category], q)
 				bm.allQuestions = append(bm.allQuestions, q)
 			}
