@@ -17,9 +17,11 @@ import (
 
 	"novabot/internal/admin"
 	"novabot/internal/ai"
+	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/games"
 	"novabot/internal/memory"
+	"novabot/internal/pacing"
 	"novabot/internal/storage"
 	"novabot/internal/tools"
 	"novabot/internal/trigger"
@@ -34,24 +36,32 @@ type SchedulerEngineInterface interface {
 
 // EventHandler coordinates incoming WhatsApp messages, logging, triggers, admin commands, and AI replies.
 type EventHandler struct {
-	waClient        *Client
-	aiClient        *ai.OpenRouterClient
-	ttsClient       *voice.OpenRouterTTS
-	groqSTT         *voice.GroqSTT
-	emotionEngine   *emotion.Engine
-	memoryEngine    *memory.TriTierEngine
-	toolRegistry    *tools.Registry
-	chatLogger      *storage.ChatLogger
-	memStore        *storage.MemoryStore
-	adminState      *admin.State
-	schedulerEngine SchedulerEngineInterface
-	statsProvider   admin.StatsProvider
-	gameEngine      *games.Engine
-	limiter         *trigger.ChatLimiter
-	historyLimit    int
-	logger          waLog.Logger
-	novaMsgMu       sync.RWMutex
-	novaMsgIDs      map[string]time.Time
+	waClient         *Client
+	aiClient         *ai.OpenRouterClient
+	ttsClient        *voice.OpenRouterTTS
+	groqSTT          *voice.GroqSTT
+	emotionEngine    *emotion.Engine
+	memoryEngine     *memory.TriTierEngine
+	toolRegistry     *tools.Registry
+	chatLogger       *storage.ChatLogger
+	memStore         *storage.MemoryStore
+	adminState       *admin.State
+	schedulerEngine  SchedulerEngineInterface
+	statsProvider    admin.StatsProvider
+	gameEngine       *games.Engine
+	limiter          *trigger.ChatLimiter
+	attentionGate    *trigger.AttentionGate
+	coalescer        *pacing.TurnCoalescer
+	pacer            *pacing.HumanPacer
+	diversityFilter  *pacing.StyleDiversityFilter
+	dashServer       *dashboard.Server
+	historyLimit     int
+	logger           waLog.Logger
+	novaMsgMu        sync.RWMutex
+	novaMsgIDs       map[string]time.Time
+	pendingMu        sync.Mutex
+	pendingDecisions map[string]trigger.TriggerDecision
+	aiGenerateFn     func(ctx context.Context, payload *trigger.RequestPayload) (*ai.ResponsePayload, error)
 }
 
 // NewEventHandler creates a new EventHandler instance.
@@ -66,15 +76,53 @@ func NewEventHandler(
 	logger waLog.Logger,
 ) *EventHandler {
 	return &EventHandler{
-		waClient:     waClient,
-		aiClient:     aiClient,
-		chatLogger:   chatLogger,
-		memStore:     memStore,
-		adminState:   adminState,
-		limiter:      limiter,
-		historyLimit: historyLimit,
-		logger:       logger,
-		novaMsgIDs:   make(map[string]time.Time),
+		waClient:         waClient,
+		aiClient:         aiClient,
+		chatLogger:       chatLogger,
+		memStore:         memStore,
+		adminState:       adminState,
+		limiter:          limiter,
+		attentionGate:    trigger.NewAttentionGate(90 * time.Second),
+		coalescer:        pacing.NewTurnCoalescer(1800*time.Millisecond, 1500*time.Millisecond, 4500*time.Millisecond),
+		pacer:            pacing.NewHumanPacer(),
+		diversityFilter:  pacing.NewStyleDiversityFilter(),
+		historyLimit:     historyLimit,
+		logger:           logger,
+		novaMsgIDs:       make(map[string]time.Time),
+		pendingDecisions: make(map[string]trigger.TriggerDecision),
+	}
+}
+
+// SetDashboard attaches the live web admin dashboard server for metrics and logs.
+func (h *EventHandler) SetDashboard(srv *dashboard.Server) {
+	h.dashServer = srv
+}
+
+// SetAttentionGate overrides the default AttentionGate (useful for custom TTLs or tests).
+func (h *EventHandler) SetAttentionGate(gate *trigger.AttentionGate) {
+	if gate != nil {
+		h.attentionGate = gate
+	}
+}
+
+// SetTurnCoalescer overrides the default TurnCoalescer (useful for custom debounce windows or tests).
+func (h *EventHandler) SetTurnCoalescer(c *pacing.TurnCoalescer) {
+	if c != nil {
+		h.coalescer = c
+	}
+}
+
+// SetHumanPacer overrides the default HumanPacer.
+func (h *EventHandler) SetHumanPacer(p *pacing.HumanPacer) {
+	if p != nil {
+		h.pacer = p
+	}
+}
+
+// SetStyleDiversityFilter overrides the default StyleDiversityFilter.
+func (h *EventHandler) SetStyleDiversityFilter(f *pacing.StyleDiversityFilter) {
+	if f != nil {
+		h.diversityFilter = f
 	}
 }
 
@@ -214,10 +262,10 @@ func (h *EventHandler) markAsNovaSent(msgID string) {
 	defer h.novaMsgMu.Unlock()
 	h.novaMsgIDs[msgID] = time.Now()
 
-	// Clean up entries older than 10 minutes
+	// Clean up entries older than 24 hours
 	now := time.Now()
 	for id, t := range h.novaMsgIDs {
-		if now.Sub(t) > 10*time.Minute {
+		if now.Sub(t) > 24*time.Hour {
 			delete(h.novaMsgIDs, id)
 		}
 	}
@@ -262,7 +310,9 @@ func (h *EventHandler) SendMessage(ctx context.Context, chatID string, text stri
 		IsReply:     replyToID != "",
 		RepliedToID: replyToID,
 	}
-	_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+	if h.chatLogger != nil {
+		_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+	}
 	return nil
 }
 
@@ -271,6 +321,10 @@ func (h *EventHandler) HandleEvent(rawEvt interface{}) {
 	switch evt := rawEvt.(type) {
 	case *events.Message:
 		h.handleMessageEvent(evt)
+	case *events.ChatPresence:
+		if evt.State == types.ChatPresenceComposing && !evt.MessageSource.IsFromMe && h.coalescer != nil {
+			h.coalescer.NotifyTyping(evt.MessageSource.Chat.String(), evt.MessageSource.Sender.ToNonAD().String())
+		}
 	case *events.GroupInfo:
 		if h.schedulerEngine != nil && len(evt.Join) > 0 {
 			chatID := evt.JID.String()
@@ -288,6 +342,12 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 
 	// 1. Loop Protection: Ignore messages sent by Nova's bot process
 	if h.isNovaSent(evt.Info.ID) {
+		return
+	}
+
+	// Ignore pure reaction messages early so reaction events never clutter .jsonl logs or trigger AI turns
+	unwrapped := unwrapMessage(evt.Message)
+	if unwrapped != nil && unwrapped.GetReactionMessage() != nil {
 		return
 	}
 
@@ -318,10 +378,10 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	}
 
 	// 1.5 Handle Voice Note via Groq Whisper STT
-	isVoiceIncoming := (evt.Message.GetAudioMessage() != nil)
+	isVoiceIncoming := (unwrapped != nil && unwrapped.GetAudioMessage() != nil)
 	if isVoiceIncoming && h.groqSTT != nil && h.waClient != nil && h.waClient.WAClient != nil {
 		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 25*time.Second)
-		audioBytes, dlErr := h.waClient.WAClient.Download(downloadCtx, evt.Message.GetAudioMessage())
+		audioBytes, dlErr := h.waClient.WAClient.Download(downloadCtx, unwrapped.GetAudioMessage())
 		downloadCancel()
 
 		if dlErr == nil && len(audioBytes) > 0 {
@@ -354,12 +414,31 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		RepliedToID: repliedMsgID,
 	}
 
-	if err := h.chatLogger.AppendMessage(chatType, chatID, logEntry); err != nil {
-		h.logger.Errorf("Failed to log message %s in chat %s: %v", messageID, chatID, err)
+	if h.chatLogger != nil {
+		if err := h.chatLogger.AppendMessage(chatType, chatID, logEntry); err != nil {
+			h.logger.Errorf("Failed to log message %s in chat %s: %v", messageID, chatID, err)
+		}
 	}
 
 	// Clean text from invisible unicode marks
 	cleanText := admin.CleanInvisibleMarks(text)
+
+	if h.memoryEngine != nil {
+		_, _ = h.memoryEngine.RecordMessage(context.Background(), chatID, memory.MemoryMessage{
+			MessageID:  messageID,
+			SenderID:   senderID,
+			SenderName: senderName,
+			Text:       cleanText,
+			IsNova:     false,
+			Timestamp:  evt.Info.Timestamp,
+		})
+	}
+
+	if h.dashServer != nil {
+		if m := h.dashServer.GetMetrics(); m != nil {
+			m.RecordEvent(false, 0, "", "", senderName, chatID, cleanText)
+		}
+	}
 
 	// 3. Command Check (Admin Commands & Archiving)
 	if h.adminState != nil {
@@ -481,10 +560,17 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// 4. Trigger Matching ("يا نوفا", "نوفا", @Nova, Tagging, or Reply)
+	// 4. Personal Account Safe AttentionGate & Burst Coalescing
 	var mentionedJIDs []string
-	if evt.Message.GetExtendedTextMessage() != nil && evt.Message.GetExtendedTextMessage().GetContextInfo() != nil {
-		mentionedJIDs = evt.Message.GetExtendedTextMessage().GetContextInfo().GetMentionedJID()
+	if unwrapped != nil {
+		switch {
+		case unwrapped.GetExtendedTextMessage() != nil && unwrapped.GetExtendedTextMessage().GetContextInfo() != nil:
+			mentionedJIDs = unwrapped.GetExtendedTextMessage().GetContextInfo().GetMentionedJID()
+		case unwrapped.GetImageMessage() != nil && unwrapped.GetImageMessage().GetContextInfo() != nil:
+			mentionedJIDs = unwrapped.GetImageMessage().GetContextInfo().GetMentionedJID()
+		case unwrapped.GetVideoMessage() != nil && unwrapped.GetVideoMessage().GetContextInfo() != nil:
+			mentionedJIDs = unwrapped.GetVideoMessage().GetContextInfo().GetMentionedJID()
+		}
 	}
 
 	botJID := ""
@@ -492,20 +578,32 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		botJID = h.waClient.GetUserJID().String()
 	}
 
-	triggerMatched := trigger.CheckTriggerWithMentions(
-		cleanText,
-		isReply,
-		admin.CleanInvisibleMarks(repliedText),
-		mentionedJIDs,
-		botJID,
-	)
+	repliedToNovaMsg := isReply && (h.isNovaSent(repliedMsgID) || (h.chatLogger != nil && h.chatLogger.IsNovaMessage(chatType, chatID, repliedMsgID)))
+	hasPendingBurst := h.coalescer != nil && h.coalescer.HasPending(chatID, senderID)
+
+	var decision trigger.TriggerDecision
+	if h.attentionGate != nil {
+		decision = h.attentionGate.Evaluate(trigger.TriggerEvalParams{
+			ChatID:           chatID,
+			SenderID:         senderID,
+			IsGroup:          evt.Info.IsGroup,
+			IsFromMe:         evt.Info.IsFromMe,
+			MessageText:      cleanText,
+			IsReply:          isReply,
+			RepliedToText:    admin.CleanInvisibleMarks(repliedText),
+			RepliedToNovaMsg: repliedToNovaMsg,
+			MentionedJIDs:    mentionedJIDs,
+			BotJID:           botJID,
+		})
+	}
 
 	// Feed message to rush tracker & silence breaker
 	if h.schedulerEngine != nil && evt.Info.IsGroup {
-		h.schedulerEngine.RecordIncomingMessageForRush(chatID, triggerMatched)
+		h.schedulerEngine.RecordIncomingMessageForRush(chatID, decision.Matched || hasPendingBurst)
 	}
 
-	if !triggerMatched {
+	// CRITICAL INVARIANT: Never emit MarkRead, SendChatPresence, or reply on un-triggered messages!
+	if !decision.Matched && !hasPendingBurst {
 		return
 	}
 
@@ -518,17 +616,98 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// 6. Rate Limiter / Cooldown check per chat
-	if h.limiter != nil && !h.limiter.Allow(chatID) {
-		h.logger.Infof("Rate limiter active for chat %s, skipping trigger", chatID)
+	// Store or upgrade pending trigger decision for this burst
+	pendKey := chatID + "|" + senderID
+	h.pendingMu.Lock()
+	existingDec, hasDec := h.pendingDecisions[pendKey]
+	if !hasDec || (decision.Matched && (!existingDec.Matched || (existingDec.IsLeaseTurn && !decision.IsLeaseTurn))) {
+		h.pendingDecisions[pendKey] = decision
+	}
+	h.pendingMu.Unlock()
+
+	item := pacing.CoalescedItem{
+		MessageID:     messageID,
+		Text:          text,
+		IsReply:       isReply,
+		RepliedMsgID:  repliedMsgID,
+		RepliedSender: repliedSender,
+		RepliedText:   repliedText,
+		IsVoice:       isVoiceIncoming,
+		Timestamp:     evt.Info.Timestamp,
+		RawEvent:      evt,
+	}
+
+	if h.coalescer != nil {
+		h.coalescer.Enqueue(chatID, senderID, item, func(cID, sID string, merged []pacing.CoalescedItem) {
+			h.processCoalescedTurn(evt, merged)
+		})
+	} else {
+		h.processCoalescedTurn(evt, []pacing.CoalescedItem{item})
+	}
+}
+
+func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pacing.CoalescedItem) {
+	if lastEvt == nil || len(merged) == 0 {
 		return
 	}
+	if raw, ok := merged[len(merged)-1].RawEvent.(*events.Message); ok && raw != nil {
+		lastEvt = raw
+	}
+
+	chatID := lastEvt.Info.Chat.String()
+	senderID := lastEvt.Info.Sender.ToNonAD().String()
+	senderName := lastEvt.Info.PushName
+	if senderName == "" {
+		senderName = lastEvt.Info.Sender.User
+	}
+	if h.adminState != nil {
+		if customNick := h.adminState.GetChatNickname(chatID, senderID); customNick != "" {
+			senderName = customNick
+		}
+	}
+	chatType := "private"
+	if lastEvt.Info.IsGroup {
+		chatType = "group"
+	}
+	messageID := lastEvt.Info.ID
+
+	pendKey := chatID + "|" + senderID
+	h.pendingMu.Lock()
+	decision := h.pendingDecisions[pendKey]
+	delete(h.pendingDecisions, pendKey)
+	h.pendingMu.Unlock()
 
 	// Concurrency lock per chat
 	if h.limiter != nil {
 		chatLock := h.limiter.GetChatLock(chatID)
 		chatLock.Lock()
 		defer chatLock.Unlock()
+	}
+
+	combinedText := pacing.CombineTexts(merged)
+	cleanCombined := admin.CleanInvisibleMarks(combinedText)
+	if strings.TrimSpace(cleanCombined) == "" {
+		return
+	}
+
+	var isReply bool
+	var repliedMsgID, repliedSender, repliedText string
+	var isVoiceIncoming bool
+	var msgIDs []types.MessageID
+
+	for _, it := range merged {
+		if it.MessageID != "" {
+			msgIDs = append(msgIDs, types.MessageID(it.MessageID))
+		}
+		if it.IsVoice {
+			isVoiceIncoming = true
+		}
+		if it.IsReply && it.RepliedMsgID != "" {
+			isReply = true
+			repliedMsgID = it.RepliedMsgID
+			repliedSender = it.RepliedSender
+			repliedText = it.RepliedText
+		}
 	}
 
 	var repliedTo *trigger.RepliedToInfo
@@ -540,18 +719,39 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// Download media (images only; PDFs ignored) from direct message or quoted reply
+	// Human Read Delay & Presence
+	if h.waClient != nil && h.waClient.HasTransport() {
+		if h.waClient.WAClient != nil && h.pacer != nil {
+			time.Sleep(h.pacer.ComputeReadDelay(cleanCombined))
+		}
+		readCtx, readCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = h.waClient.MarkRead(readCtx, msgIDs, time.Now(), lastEvt.Info.Chat, lastEvt.Info.Sender)
+		readCancel()
+
+		presCtx, presCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+		presCancel()
+	}
+
+	// Download media (images only; PDFs ignored) from any bubble in the burst or quoted reply
 	var waCli *whatsmeow.Client
 	if h.waClient != nil {
 		waCli = h.waClient.WAClient
 	}
-	downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	mediaDataURL, mediaErr := DownloadMediaAsBase64(downloadCtx, waCli, evt.Message)
-	downloadCancel()
-	if mediaErr != nil {
-		h.logger.Warnf("Could not download media for message %s: %v", messageID, mediaErr)
-	} else if mediaDataURL != nil {
-		h.logger.Infof("Successfully downloaded and attached image for message %s", messageID)
+	var mediaDataURL *string
+	for _, it := range merged {
+		if rawEvt, ok := it.RawEvent.(*events.Message); ok && rawEvt != nil && rawEvt.Message != nil {
+			downloadCtx, downloadCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			urlStr, mediaErr := DownloadMediaAsBase64(downloadCtx, waCli, rawEvt.Message)
+			downloadCancel()
+			if mediaErr != nil {
+				h.logger.Warnf("Could not download media for message %s: %v", it.MessageID, mediaErr)
+			} else if urlStr != nil {
+				h.logger.Infof("Successfully downloaded and attached image for message %s", it.MessageID)
+				mediaDataURL = urlStr
+				break
+			}
+		}
 	}
 
 	// Dynamic history limit from admin state or default
@@ -560,7 +760,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		effectiveHistoryLimit = h.adminState.GetChatLimit(chatID, h.historyLimit)
 	}
 
-	// 7. Build full context payload for the AI
+	// Build full context payload for the AI
 	payload, err := trigger.BuildContext(
 		h.chatLogger,
 		h.memStore,
@@ -570,7 +770,7 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		senderID,
 		senderName,
 		messageID,
-		text,
+		combinedText,
 		isReply,
 		repliedTo,
 		mediaDataURL,
@@ -581,76 +781,183 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		return
 	}
 
-	// 8. Call Multi-Model AI Router
+	payload.AttentionLeaseActive = decision.IsLeaseTurn
+	payload.TriggerReason = string(decision.Reason)
+
+	if h.diversityFilter != nil {
+		var recentNovaMsgs []string
+		for _, m := range payload.RecentContext {
+			if m.IsNova && strings.TrimSpace(m.Text) != "" {
+				recentNovaMsgs = append(recentNovaMsgs, m.Text)
+			}
+		}
+		if styleDir := h.diversityFilter.BuildPromptDirective(recentNovaMsgs); styleDir != "" {
+			payload.StyleGuidance = &styleDir
+		}
+	}
+
 	aiCtx, aiCancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer aiCancel()
 
 	// Inject Emotion Engine State and Mood
-	isMaker := (h.adminState != nil && h.adminState.IsAdmin(senderID, senderName, evt.Info.IsFromMe))
+	isMaker := (h.adminState != nil && h.adminState.IsAdmin(senderID, senderName, lastEvt.Info.IsFromMe))
 	if h.emotionEngine != nil {
-		h.emotionEngine.UpdateMood(chatID, senderID, senderName, cleanText, isMaker, "")
+		h.emotionEngine.UpdateMood(chatID, senderID, senderName, cleanCombined, isMaker, "")
 		emotionCtx := h.emotionEngine.BuildPromptContext(chatID, senderID, senderName, isMaker)
 		payload.EmotionContext = &emotionCtx
 	}
 
 	// Inject Tri-Tier Comprehensive Memory Context
 	if h.memoryEngine != nil {
-		if vectorCtx, err := h.memoryEngine.GetComprehensiveContext(aiCtx, chatID, senderID, cleanText); err == nil && vectorCtx != "" {
+		if vectorCtx, err := h.memoryEngine.GetComprehensiveContext(aiCtx, chatID, senderID, cleanCombined); err == nil && vectorCtx != "" {
 			payload.VectorMemories = &vectorCtx
 		}
 	}
 
-	if h.aiClient == nil {
+	if h.aiClient == nil && h.aiGenerateFn == nil {
 		h.logger.Errorf("AI client not configured")
 		return
 	}
 
-	h.logger.Infof("Trigger matched in chat %s by %s, generating AI response...", chatID, senderName)
-	aiResp, err := h.aiClient.GenerateResponse(aiCtx, payload)
+	h.logger.Infof("Trigger matched (%s) in chat %s by %s (%d coalesced bubble(s)), generating AI response...", decision.Reason, chatID, senderName, len(merged))
+	var aiResp *ai.ResponsePayload
+	if h.aiGenerateFn != nil {
+		aiResp, err = h.aiGenerateFn(aiCtx, payload)
+	} else {
+		aiResp, err = h.aiClient.GenerateResponse(aiCtx, payload)
+	}
 	if err != nil {
 		h.logger.Errorf("Failed to generate AI response for message %s: %v", messageID, err)
+		if h.waClient != nil && h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresencePaused, types.ChatPresenceMediaText)
+			presCancel()
+		}
 		return
 	}
 
-	// 9. Rule 9: If model returns should_reply: false, do not send anything
-	if aiResp == nil || !aiResp.ShouldReply {
-		h.logger.Infof("AI decided not to reply (should_reply: false) for message %s", messageID)
+	hasReaction := aiResp != nil && aiResp.ReactionEmoji != nil && strings.TrimSpace(*aiResp.ReactionEmoji) != ""
+	if aiResp == nil || aiResp.Action == "ignore" || (!aiResp.ShouldReply && !hasReaction) {
+		h.logger.Infof("AI decided not to reply (should_reply: false / action: ignore) for message %s", messageID)
+		if h.waClient != nil && h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresencePaused, types.ChatPresenceMediaText)
+			presCancel()
+		}
+		if decision.IsLeaseTurn && h.attentionGate != nil {
+			h.attentionGate.RevokeLease(chatID, senderID)
+		}
 		return
 	}
 
-	if aiResp.ReplyText == nil || strings.TrimSpace(*aiResp.ReplyText) == "" {
-		h.logger.Warnf("AI returned should_reply: true but empty reply text for message %s", messageID)
-		return
+	// Grant or refresh 90s attention lease
+	if h.attentionGate != nil {
+		h.attentionGate.GrantLease(chatID, senderID, lastEvt.Info.IsFromMe)
 	}
 
-	// Target message to reply (quote) to
+	// Target message to reply (quote) or react to
 	targetMsgID := messageID
-	if aiResp.ReplyToMessageID != nil && *aiResp.ReplyToMessageID != "" {
-		targetMsgID = *aiResp.ReplyToMessageID
+	if aiResp.ReplyToMessageID != nil && strings.TrimSpace(*aiResp.ReplyToMessageID) != "" {
+		targetMsgID = strings.TrimSpace(*aiResp.ReplyToMessageID)
 	}
 
-	// 10. Send WhatsApp Reply (Quote) - Check if should send as Voice Note
-	isVoiceRequested := IsVoiceRequested(cleanText)
+	// Native Emoji Reaction
+	reactionEmojiStr := ""
+	if hasReaction {
+		reactionEmojiStr = strings.TrimSpace(*aiResp.ReactionEmoji)
+		if h.waClient != nil && h.waClient.HasTransport() {
+			reactCtx, reactCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			reactID, rErr := h.waClient.SendReaction(reactCtx, lastEvt.Info.Chat, lastEvt.Info.Sender, types.MessageID(targetMsgID), reactionEmojiStr)
+			reactCancel()
+			if rErr == nil && reactID != "" {
+				h.markAsNovaSent(string(reactID))
+			} else if rErr != nil {
+				h.logger.Warnf("Failed to send reaction to message %s: %v", targetMsgID, rErr)
+			}
+		}
+	}
+
+	saveMemoryNote := func() {
+		if aiResp.MemoryNote != nil && strings.TrimSpace(*aiResp.MemoryNote) != "" {
+			note := strings.TrimSpace(*aiResp.MemoryNote)
+			if h.memStore != nil {
+				if err := h.memStore.AppendMemoryNote(senderID, senderName, note); err != nil {
+					h.logger.Errorf("Failed to save memory note for user %s: %v", senderID, err)
+				} else {
+					h.logger.Infof("Saved new memory note for user %s (%s)", senderName, senderID)
+				}
+			}
+			if h.memoryEngine != nil {
+				_ = h.memoryEngine.SaveMemory(chatID, senderID, senderName, note, nil)
+			}
+		}
+	}
+
+	if aiResp.Action == "react_only" || !aiResp.ShouldReply || aiResp.ReplyText == nil || strings.TrimSpace(*aiResp.ReplyText) == "" {
+		if h.waClient != nil && h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresencePaused, types.ChatPresenceMediaText)
+			presCancel()
+		}
+		saveMemoryNote()
+		return
+	}
+
+	// Voice Note vs Multi-Bubble Text Delivery
+	isVoiceRequested := IsVoiceRequested(cleanCombined)
 	aiWantsVoice := (aiResp.SendAsVoice != nil && *aiResp.SendAsVoice)
 	shouldSendVoice := (isVoiceRequested || isVoiceIncoming || aiWantsVoice)
 
 	if h.waClient == nil {
 		h.logger.Errorf("WhatsApp client not configured, cannot send reply")
+		saveMemoryNote()
 		return
 	}
 
+	botSenderID := h.waClient.GetUserJID().ToNonAD().String()
+
 	var sentMsgID types.MessageID
 	if shouldSendVoice && h.ttsClient != nil {
+		if h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaAudio)
+			presCancel()
+		}
 		ttsCtx, ttsCancel := context.WithTimeout(context.Background(), 120*time.Second)
 		oggBytes, durSec, ttsErr := h.ttsClient.SynthesizeToOggOpus(ttsCtx, *aiResp.ReplyText)
 		ttsCancel()
 
 		if ttsErr == nil && len(oggBytes) > 0 {
 			sendCtx, sendCancel := context.WithTimeout(context.Background(), 60*time.Second)
-			sentMsgID, err = h.waClient.SendVoiceNote(sendCtx, evt.Info.Chat, oggBytes, durSec, targetMsgID, evt.Info.Sender.String(), text)
+			sentMsgID, err = h.waClient.SendVoiceNote(sendCtx, lastEvt.Info.Chat, oggBytes, durSec, targetMsgID, lastEvt.Info.Sender.String(), combinedText)
 			sendCancel()
-			if err == nil {
-				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds)", durSec)
+			if err == nil && sentMsgID != "" {
+				h.markAsNovaSent(string(sentMsgID))
+				h.logger.Infof("Nova replied with WhatsApp Voice Note successfully (duration: %ds, Sent ID: %s)", durSec, sentMsgID)
+				cleanVoiceText := strings.TrimSpace(StripAudioTags(*aiResp.ReplyText))
+				novaLog := storage.LogMessage{
+					MessageID:   string(sentMsgID),
+					SenderID:    botSenderID,
+					SenderName:  "Nova",
+					Text:        cleanVoiceText,
+					IsNova:      true,
+					Timestamp:   time.Now().Format(time.RFC3339),
+					IsReply:     true,
+					RepliedToID: targetMsgID,
+				}
+				if h.chatLogger != nil {
+					_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+				}
+				if h.memoryEngine != nil {
+					_, _ = h.memoryEngine.RecordMessage(context.Background(), chatID, memory.MemoryMessage{
+						MessageID:  string(sentMsgID),
+						SenderID:   botSenderID,
+						SenderName: "Nova",
+						Text:       cleanVoiceText,
+						IsNova:     true,
+						Timestamp:  time.Now(),
+					})
+				}
 			} else {
 				h.logger.Errorf("Failed to send voice note to WhatsApp: %v", err)
 			}
@@ -659,55 +966,108 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// If not sent as voice note (model chose text or TTS failed), send regular text reply
+	// Multi-Bubble Text Delivery
 	if sentMsgID == "" {
-		cleanReplyText := StripAudioTags(*aiResp.ReplyText)
-		replyCtx, replyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		sentMsgID, err = h.waClient.SendReply(replyCtx, evt.Info.Chat, cleanReplyText, targetMsgID, evt.Info.Sender.String(), text)
-		replyCancel()
-	}
-
-	if err != nil {
-		h.logger.Errorf("Failed to send WhatsApp reply for message %s: %v", messageID, err)
-		return
-	}
-
-	h.markAsNovaSent(string(sentMsgID))
-	h.logger.Infof("Nova replied successfully to message %s (Sent ID: %s)", targetMsgID, sentMsgID)
-
-	// Record Nova's response in chat log
-	botSenderID := ""
-	if h.waClient != nil {
-		botSenderID = h.waClient.GetUserJID().ToNonAD().String()
-	}
-
-	novaLog := storage.LogMessage{
-		MessageID:   string(sentMsgID),
-		SenderID:    botSenderID,
-		SenderName:  "Nova",
-		Text:        *aiResp.ReplyText,
-		IsNova:      true,
-		Timestamp:   time.Now().Format(time.RFC3339),
-		IsReply:     true,
-		RepliedToID: targetMsgID,
-	}
-	if h.chatLogger != nil {
-		_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
-	}
-
-	// Save memory note if returned by AI
-	if aiResp.MemoryNote != nil && strings.TrimSpace(*aiResp.MemoryNote) != "" {
-		note := strings.TrimSpace(*aiResp.MemoryNote)
-		if err := h.memStore.AppendMemoryNote(senderID, senderName, note); err != nil {
-			h.logger.Errorf("Failed to save memory note for user %s: %v", senderID, err)
-		} else {
-			h.logger.Infof("Saved new memory note for user %s (%s)", senderName, senderID)
+		bubbles := aiResp.Bubbles
+		if len(bubbles) == 0 {
+			bubbles = pacing.SplitIntoBubbles(StripAudioTags(*aiResp.ReplyText), 3)
 		}
 
-		if h.memoryEngine != nil {
-			_ = h.memoryEngine.SaveMemory(chatID, senderID, senderName, note, nil)
+		sentIdx := 0
+		for _, rawBubble := range bubbles {
+			bText := strings.TrimSpace(StripAudioTags(rawBubble))
+			if bText == "" {
+				continue
+			}
+
+			if sentIdx > 0 && h.waClient != nil && h.waClient.HasTransport() {
+				presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+				presCancel()
+				if h.waClient.WAClient != nil && h.pacer != nil {
+					time.Sleep(h.pacer.ComputeTypingDuration(bText))
+				}
+			}
+
+			shouldQuote := false
+			if sentIdx == 0 {
+				if h.pacer != nil {
+					shouldQuote = h.pacer.ShouldQuoteReply(lastEvt.Info.IsGroup, isReply, 0)
+				} else {
+					shouldQuote = pacing.ShouldQuoteReply(lastEvt.Info.IsGroup, isReply, 0)
+				}
+			}
+
+			replyCtx, replyCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			var bSentID types.MessageID
+			var sendErr error
+			if shouldQuote {
+				bSentID, sendErr = h.waClient.SendReply(replyCtx, lastEvt.Info.Chat, bText, targetMsgID, lastEvt.Info.Sender.String(), combinedText)
+			} else {
+				bSentID, sendErr = h.waClient.SendText(replyCtx, lastEvt.Info.Chat, bText)
+			}
+			replyCancel()
+
+			if sendErr != nil {
+				h.logger.Errorf("Failed to send WhatsApp bubble %d for message %s: %v", sentIdx+1, messageID, sendErr)
+				continue
+			}
+
+			sentIdx++
+			h.markAsNovaSent(string(bSentID))
+			h.logger.Infof("Nova sent bubble %d to message %s (Sent ID: %s, quoted=%v)", sentIdx, targetMsgID, bSentID, shouldQuote)
+
+			repliedToForLog := ""
+			if shouldQuote {
+				repliedToForLog = targetMsgID
+			}
+			novaLog := storage.LogMessage{
+				MessageID:   string(bSentID),
+				SenderID:    botSenderID,
+				SenderName:  "Nova",
+				Text:        bText,
+				IsNova:      true,
+				Timestamp:   time.Now().Format(time.RFC3339),
+				IsReply:     shouldQuote,
+				RepliedToID: repliedToForLog,
+			}
+			if h.chatLogger != nil {
+				_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+			}
+			if h.memoryEngine != nil {
+				_, _ = h.memoryEngine.RecordMessage(context.Background(), chatID, memory.MemoryMessage{
+					MessageID:  string(bSentID),
+					SenderID:   botSenderID,
+					SenderName: "Nova",
+					Text:       bText,
+					IsNova:     true,
+					Timestamp:  time.Now(),
+				})
+			}
+		}
+
+		if h.waClient != nil && h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresencePaused, types.ChatPresenceMediaText)
+			presCancel()
 		}
 	}
+
+	if h.dashServer != nil {
+		moodStr := "witty"
+		if aiResp.Mood != nil && strings.TrimSpace(*aiResp.Mood) != "" {
+			moodStr = strings.TrimSpace(*aiResp.Mood)
+		}
+		snippet := StripAudioTags(*aiResp.ReplyText)
+		if m := h.dashServer.GetMetrics(); m != nil {
+			m.RecordEvent(true, len([]rune(snippet)), moodStr, reactionEmojiStr, senderName, chatID, snippet)
+		}
+		if lh := h.dashServer.GetLogHub(); lh != nil {
+			lh.AddLog("INFO", fmt.Sprintf("Nova replied in %s to %s (reason=%s, mood=%s)", chatID, senderName, decision.Reason, moodStr))
+		}
+	}
+
+	saveMemoryNote()
 }
 
 // IsVoiceRequested detects whether the user's message is asking for a voice note, pronunciation, or speaking.

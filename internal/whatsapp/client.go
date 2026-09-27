@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
@@ -13,9 +14,23 @@ import (
 
 // Client wraps whatsmeow.Client and provides helper methods.
 type Client struct {
-	WAClient  *whatsmeow.Client
-	container *sqlstore.Container
-	logger    waLog.Logger
+	WAClient       *whatsmeow.Client
+	container      *sqlstore.Container
+	logger         waLog.Logger
+	userJID        types.JID
+	sendReplyFn    func(ctx context.Context, chatJID types.JID, replyText, replyToID, replyToSender, quotedText string) (types.MessageID, error)
+	sendTextFn     func(ctx context.Context, chatJID types.JID, text string) (types.MessageID, error)
+	markReadFn     func(ctx context.Context, msgIDs []types.MessageID, timestamp time.Time, chatJID, senderJID types.JID) error
+	sendPresenceFn func(ctx context.Context, chatJID types.JID, state types.ChatPresence, media types.ChatPresenceMedia) error
+	sendReactionFn func(ctx context.Context, chatJID, senderJID types.JID, targetMsgID types.MessageID, emoji string) (types.MessageID, error)
+}
+
+// HasTransport returns true if the client has an active whatsmeow client or test transport hooks configured.
+func (c *Client) HasTransport() bool {
+	if c == nil {
+		return false
+	}
+	return c.WAClient != nil || c.sendReplyFn != nil || c.sendTextFn != nil || c.markReadFn != nil || c.sendPresenceFn != nil || c.sendReactionFn != nil
 }
 
 // NewClient creates a new Client instance from the SQLite session container.
@@ -36,6 +51,9 @@ func NewClient(ctx context.Context, container *sqlstore.Container, logger waLog.
 
 // AddEventHandler registers an event handler function on the WhatsApp client.
 func (c *Client) AddEventHandler(handler func(interface{})) uint32 {
+	if c == nil || c.WAClient == nil {
+		return 0
+	}
 	return c.WAClient.AddEventHandler(handler)
 }
 
@@ -88,6 +106,9 @@ func (c *Client) Disconnect() {
 
 // SendReply sends a reply message quoting the given message ID and content.
 func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText string, replyToID string, replyToSender string, quotedText string) (types.MessageID, error) {
+	if c != nil && c.sendReplyFn != nil {
+		return c.sendReplyFn(ctx, chatJID, replyText, replyToID, replyToSender, quotedText)
+	}
 	if c == nil || c.WAClient == nil {
 		return "", fmt.Errorf("whatsapp client not initialized")
 	}
@@ -102,10 +123,80 @@ func (c *Client) SendReply(ctx context.Context, chatJID types.JID, replyText str
 	return resp.ID, nil
 }
 
+// SendText sends an unquoted text message to the given chat JID.
+func (c *Client) SendText(ctx context.Context, chatJID types.JID, text string) (types.MessageID, error) {
+	if c != nil && c.sendTextFn != nil {
+		return c.sendTextFn(ctx, chatJID, text)
+	}
+	if c == nil || c.WAClient == nil {
+		return "", fmt.Errorf("whatsapp client not initialized")
+	}
+
+	msgProto := BuildReplyMessage(text, "", "", "")
+
+	resp, err := c.WAClient.SendMessage(ctx, chatJID, msgProto)
+	if err != nil {
+		return "", fmt.Errorf("failed to send WhatsApp text message: %w", err)
+	}
+
+	return resp.ID, nil
+}
+
+// MarkRead sends a read receipt for the specified message IDs.
+func (c *Client) MarkRead(ctx context.Context, msgIDs []types.MessageID, timestamp time.Time, chatJID, senderJID types.JID) error {
+	if c == nil || len(msgIDs) == 0 {
+		return nil
+	}
+	if c.markReadFn != nil {
+		return c.markReadFn(ctx, msgIDs, timestamp, chatJID, senderJID)
+	}
+	if c.WAClient == nil {
+		return nil
+	}
+	return c.WAClient.MarkRead(ctx, msgIDs, timestamp, chatJID, senderJID)
+}
+
+// SendChatPresence sends a typing or recording presence indicator to the chat.
+func (c *Client) SendChatPresence(ctx context.Context, chatJID types.JID, state types.ChatPresence, media types.ChatPresenceMedia) error {
+	if c == nil {
+		return nil
+	}
+	if c.sendPresenceFn != nil {
+		return c.sendPresenceFn(ctx, chatJID, state, media)
+	}
+	if c.WAClient == nil {
+		return nil
+	}
+	return c.WAClient.SendChatPresence(ctx, chatJID, state, media)
+}
+
+// SendReaction sends a native WhatsApp emoji reaction to a specific message.
+func (c *Client) SendReaction(ctx context.Context, chatJID, senderJID types.JID, targetMsgID types.MessageID, emoji string) (types.MessageID, error) {
+	if c != nil && c.sendReactionFn != nil {
+		return c.sendReactionFn(ctx, chatJID, senderJID, targetMsgID, emoji)
+	}
+	if c == nil || c.WAClient == nil {
+		return "", fmt.Errorf("whatsapp client not initialized")
+	}
+
+	reactionMsg := c.WAClient.BuildReaction(chatJID, senderJID, targetMsgID, emoji)
+	resp, err := c.WAClient.SendMessage(ctx, chatJID, reactionMsg)
+	if err != nil {
+		return "", fmt.Errorf("failed to send WhatsApp reaction: %w", err)
+	}
+
+	return resp.ID, nil
+}
+
 // GetUserJID returns the bot's own JID.
 func (c *Client) GetUserJID() types.JID {
-	if c != nil && c.WAClient != nil && c.WAClient.Store != nil && c.WAClient.Store.ID != nil {
-		return *c.WAClient.Store.ID
+	if c != nil {
+		if !c.userJID.IsEmpty() {
+			return c.userJID
+		}
+		if c.WAClient != nil && c.WAClient.Store != nil && c.WAClient.Store.ID != nil {
+			return *c.WAClient.Store.ID
+		}
 	}
 	return types.EmptyJID
 }
@@ -114,3 +205,4 @@ func (c *Client) GetUserJID() types.JID {
 func (c *Client) IsConnected() bool {
 	return c != nil && c.WAClient != nil && c.WAClient.IsConnected()
 }
+

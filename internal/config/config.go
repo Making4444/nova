@@ -106,13 +106,13 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	// Default is 0 (all messages in the conversation)
-	historyLimit := 0
-	if hlStr := os.Getenv("CONTEXT_HISTORY_LIMIT"); hlStr != "" {
-		if strings.ToLower(strings.TrimSpace(hlStr)) != "all" {
-			if v, err := strconv.Atoi(hlStr); err == nil && v >= 0 {
-				historyLimit = v
-			}
+	// Default is a bounded working memory window (25 messages; 30 if set to "all")
+	historyLimit := 25
+	if hlStr := strings.TrimSpace(os.Getenv("CONTEXT_HISTORY_LIMIT")); hlStr != "" {
+		if strings.ToLower(hlStr) == "all" {
+			historyLimit = 30
+		} else if v, err := strconv.Atoi(hlStr); err == nil && v > 0 {
+			historyLimit = v
 		}
 	}
 

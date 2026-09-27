@@ -11,8 +11,33 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// unwrapMessage unwraps ephemeral, view-once, and document-with-caption wrappers so inner message content and context are accessible.
+func unwrapMessage(msg *waE2E.Message) *waE2E.Message {
+	for i := 0; i < 4 && msg != nil; i++ {
+		if msg.GetEphemeralMessage() != nil && msg.GetEphemeralMessage().GetMessage() != nil {
+			msg = msg.GetEphemeralMessage().GetMessage()
+			continue
+		}
+		if msg.GetViewOnceMessage() != nil && msg.GetViewOnceMessage().GetMessage() != nil {
+			msg = msg.GetViewOnceMessage().GetMessage()
+			continue
+		}
+		if msg.GetViewOnceMessageV2() != nil && msg.GetViewOnceMessageV2().GetMessage() != nil {
+			msg = msg.GetViewOnceMessageV2().GetMessage()
+			continue
+		}
+		if msg.GetDocumentWithCaptionMessage() != nil && msg.GetDocumentWithCaptionMessage().GetMessage() != nil {
+			msg = msg.GetDocumentWithCaptionMessage().GetMessage()
+			continue
+		}
+		break
+	}
+	return msg
+}
+
 // ExtractTextAndReply extracts the raw text/caption and reply context from a WhatsApp message.
 func ExtractTextAndReply(msg *waE2E.Message) (text string, isReply bool, repliedID string, repliedSender string, repliedText string) {
+	msg = unwrapMessage(msg)
 	if msg == nil {
 		return "", false, "", "", ""
 	}
@@ -99,6 +124,7 @@ func ExtractTextAndReply(msg *waE2E.Message) (text string, isReply bool, replied
 
 // ExtractDownloadableMedia finds any downloadable image in the direct or quoted message.
 func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage, string) {
+	msg = unwrapMessage(msg)
 	if msg == nil {
 		return nil, ""
 	}
@@ -126,7 +152,7 @@ func ExtractDownloadableMedia(msg *waE2E.Message) (whatsmeow.DownloadableMessage
 	}
 
 	if ctxInfo != nil && ctxInfo.GetQuotedMessage() != nil {
-		quoted := ctxInfo.GetQuotedMessage()
+		quoted := unwrapMessage(ctxInfo.GetQuotedMessage())
 		if img := quoted.GetImageMessage(); img != nil {
 			mime := img.GetMimetype()
 			if mime == "" {

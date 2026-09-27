@@ -102,3 +102,39 @@ func TestParseResponse_WithReactionEmoji(t *testing.T) {
 	}
 }
 
+func TestParseResponse_SanitizeNullAndMultiBubbleAndActions(t *testing.T) {
+	// 1. Sanitize literal "null" in memory_note and reaction_emoji
+	rawNull := `{"should_reply": true, "reply_text": "أهلاً||عامل إيه", "memory_note": "null", "reaction_emoji": "none"}`
+	resp1, err := ParseResponse(rawNull)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp1.MemoryNote != nil {
+		t.Errorf("expected nil MemoryNote for 'null', got %q", *resp1.MemoryNote)
+	}
+	if resp1.ReactionEmoji != nil {
+		t.Errorf("expected nil ReactionEmoji for 'none', got %q", *resp1.ReactionEmoji)
+	}
+	if len(resp1.Bubbles) != 2 || resp1.Bubbles[0] != "أهلاً" || resp1.Bubbles[1] != "عامل إيه" {
+		t.Errorf("expected 2 bubbles from ||, got %v", resp1.Bubbles)
+	}
+
+	// 2. Plain text [IGNORE] and [REACT:😂]
+	respIgnore, err := ParseResponse("[IGNORE]")
+	if err != nil || respIgnore.ShouldReply || respIgnore.Action != "ignore" {
+		t.Errorf("expected ignore action for [IGNORE], got %+v, err=%v", respIgnore, err)
+	}
+
+	respReact, err := ParseResponse("[REACT:😂]")
+	if err != nil || respReact.ShouldReply || respReact.Action != "react_only" || respReact.ReactionEmoji == nil || *respReact.ReactionEmoji != "😂" {
+		t.Errorf("expected react_only action for [REACT:😂], got %+v, err=%v", respReact, err)
+	}
+
+	// 3. Plain text multi-bubble
+	respBubbles, err := ParseResponse("ههههه لا ده انت رايق || بص يا سيدي الموضوع ببساطة")
+	if err != nil || !respBubbles.ShouldReply || len(respBubbles.Bubbles) != 2 {
+		t.Errorf("expected 2 bubbles from plain text ||, got %+v, err=%v", respBubbles, err)
+	}
+}
+
+

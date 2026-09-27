@@ -161,7 +161,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	memoryEngine, err := memory.NewTriTierEngine("data/memory", nil, nil)
+	var embedder memory.Embedder
+	var episodeSummarizer memory.EpisodeSummarizer
+	if cfg.OpenRouterAPIKey != "" {
+		embedder = memory.NewOpenRouterEmbedder(cfg.OpenRouterAPIKey, "")
+		episodeSummarizer = memory.NewOpenRouterEpisodeSummarizer(cfg.OpenRouterAPIKey, cfg.ModelSummarizer)
+	}
+	memoryEngine, err := memory.NewTriTierEngine("data/memory", embedder, episodeSummarizer)
 	if err != nil {
 		logger.Errorf("Failed to initialize memory engine: %v", err)
 		os.Exit(1)
@@ -285,6 +291,7 @@ func main() {
 			"router":     cfg.ModelRouterGroq,
 		},
 	})
+	eventHandler.SetDashboard(dashServer)
 
 	go func() {
 		if err := dashServer.Start(); err != nil && err.Error() != "http: Server closed" {

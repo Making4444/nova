@@ -41,6 +41,7 @@ func TestContainsTrigger(t *testing.T) {
 		{"Negative - nova without ya", "نوفا اسم حلو", false},
 		{"Positive - at nova", "@nova ازيك", true},
 		{"Positive - at nova arabic", "@نوفا صباح الفل", true},
+		{"Positive - elongated ya and nova", "ياااا نووووفا الحقيني", true},
 		{"Negative - empty", "", false},
 	}
 
@@ -51,6 +52,13 @@ func TestContainsTrigger(t *testing.T) {
 				t.Errorf("ContainsTrigger(%q) = %v, expected %v", tc.input, got, tc.expected)
 			}
 		})
+	}
+
+	if got := NormalizeForMatch("نووووفا"); got != "نوفا" {
+		t.Errorf("NormalizeForMatch(\"نووووفا\") = %q, expected \"نوفا\"", got)
+	}
+	if got := NormalizeForMatch("ياااا نوفا"); got != "يا نوفا" {
+		t.Errorf("NormalizeForMatch(\"ياااا نوفا\") = %q, expected \"يا نوفا\"", got)
 	}
 }
 

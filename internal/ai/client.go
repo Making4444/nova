@@ -475,11 +475,13 @@ type openRouterReasoning struct {
 }
 
 type openRouterRequest struct {
-	Model     string               `json:"model"`
-	Messages  []openRouterMessage  `json:"messages"`
-	Tools     []toolDefinition     `json:"tools,omitempty"`
-	MaxTokens int                  `json:"max_tokens,omitempty"`
-	Reasoning *openRouterReasoning `json:"reasoning,omitempty"`
+	Model            string               `json:"model"`
+	Messages         []openRouterMessage  `json:"messages"`
+	Tools            []toolDefinition     `json:"tools,omitempty"`
+	MaxTokens        int                  `json:"max_tokens,omitempty"`
+	FrequencyPenalty float64              `json:"frequency_penalty,omitempty"`
+	PresencePenalty  float64              `json:"presence_penalty,omitempty"`
+	Reasoning        *openRouterReasoning `json:"reasoning,omitempty"`
 }
 
 type openRouterChoice struct {
@@ -502,7 +504,7 @@ func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) st
 	sb.WriteString(c.GetSystemPrompt())
 
 	sb.WriteString("\n\n---\n")
-	sb.WriteString("### [بيانات وسياق المحادثة الحالية على واتساب]:\n")
+	sb.WriteString("### [CONTEXT METADATA / بيانات وسياق المحادثة الحالية على واتساب]:\n")
 
 	if payload.ChatType == "group" {
 		groupName := "جروب"
@@ -520,6 +522,10 @@ func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) st
 			timeInfo += " - " + payload.TimeOfDay
 		}
 		sb.WriteString(fmt.Sprintf("- التوقيت الحالي في مصر: %s\n", timeInfo))
+	}
+
+	if payload.TimeSinceLastMessage != "" {
+		sb.WriteString(fmt.Sprintf("- Time Since Last Message in Chat: %s\n", payload.TimeSinceLastMessage))
 	}
 
 	if payload.SenderName != "" {
@@ -540,6 +546,19 @@ func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) st
 
 	if payload.VectorMemories != nil && strings.TrimSpace(*payload.VectorMemories) != "" {
 		sb.WriteString(fmt.Sprintf("- معلومات وذكريات مسترجعة ذات صلة:\n%s\n", strings.TrimSpace(*payload.VectorMemories)))
+	}
+
+	if payload.StyleGuidance != nil && strings.TrimSpace(*payload.StyleGuidance) != "" {
+		sb.WriteString("\n### [STYLE DIVERSITY & ANTI-REPETITION DIRECTIVE]:\n")
+		sb.WriteString(strings.TrimSpace(*payload.StyleGuidance) + "\n")
+	}
+
+	if payload.AttentionLeaseActive {
+		sb.WriteString("\n### [FOLLOW-UP ATTENTION WINDOW RULE]:\n")
+		sb.WriteString("- هذه الرسالة وصلت ضمن نافذة المتابعة النشطة (90 ثانية) بدون كتابة 'يا نوفا' صراحةً.\n")
+		sb.WriteString("- إذا كان المستخدم يكمل حواره أو سؤاله معك بشكل طبيعي، رد عليه بتلقائية.\n")
+		sb.WriteString("- إذا أرسل المستخدم رداً ختامياً قصيراً لا يستدعي كلاماً جديداً (مثل: \"تمام\"، \"شكراً\"، \"ماشي\"، \"👍\"، \"ههه\")، اكتفِ بعمل ريأكشن فقط عبر إخراج `[REACT:❤️]` أو `[REACT:😂]` (أو JSON يحتوي على `\"action\": \"react_only\"` مع `\"reaction_emoji\"`).\n")
+		sb.WriteString("- إذا كان واضحاً أن المستخدم انتقل للحديث مع شخص آخر في الشات ولا يوجه الكلام لك، أخرج `[IGNORE]` فقط (أو `\"should_reply\": false, \"action\": \"ignore\"`).\n")
 	}
 
 	return sb.String()
@@ -653,7 +672,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	messages := c.buildMessages(payload)
 
 	// 3. Execute initial attempt with Tool Calling loop
-	rawResp, usedSearch, err := c.executeConversation(ctx, selectedModel, messages, payload)
+	rawResp, _, err := c.executeConversation(ctx, selectedModel, messages, payload)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("openrouter request failed: %w", err)
@@ -662,11 +681,6 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	parsed, parseErr := ParseResponse(rawResp)
 	if parseErr == nil {
 		c.recordSuccess()
-		if usedSearch && parsed.ReplyText != nil && *parsed.ReplyText != "" {
-			trimmed := strings.TrimSpace(*parsed.ReplyText)
-			modified := "تم البحث\n\n" + trimmed
-			parsed.ReplyText = &modified
-		}
 		return parsed, nil
 	}
 
@@ -679,7 +693,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		},
 	)
 
-	rawRetryResp, retryUsedSearch, retryErr := c.executeConversation(ctx, selectedModel, retryMessages, payload)
+	rawRetryResp, _, retryErr := c.executeConversation(ctx, selectedModel, retryMessages, payload)
 	if retryErr != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("retry openrouter request failed: %w", retryErr)
@@ -692,12 +706,6 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	c.recordSuccess()
-	if (usedSearch || retryUsedSearch) && parsedRetry.ReplyText != nil && *parsedRetry.ReplyText != "" {
-		trimmed := strings.TrimSpace(*parsedRetry.ReplyText)
-		modified := "تم البحث\n\n" + trimmed
-		parsedRetry.ReplyText = &modified
-	}
-
 	return parsedRetry, nil
 }
 
@@ -1156,12 +1164,20 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 		reasoningObj = &openRouterReasoning{Effort: effort}
 	}
 
+	var freqPenalty, presPenalty float64
+	if model == c.modelChat {
+		freqPenalty = 0.45
+		presPenalty = 0.35
+	}
+
 	reqBody := openRouterRequest{
-		Model:     model,
-		Messages:  messages,
-		Tools:     tools,
-		MaxTokens: maxTokens,
-		Reasoning: reasoningObj,
+		Model:            model,
+		Messages:         messages,
+		Tools:            tools,
+		MaxTokens:        maxTokens,
+		FrequencyPenalty: freqPenalty,
+		PresencePenalty:  presPenalty,
+		Reasoning:        reasoningObj,
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)

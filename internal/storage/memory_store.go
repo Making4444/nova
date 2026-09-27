@@ -73,9 +73,22 @@ func (s *MemoryStore) GetUserMemory(userID string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
+func isGarbageMemoryNote(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	switch lower {
+	case "null", "nil", "none", "لا يوجد", "مافيش", "- null", "-null", "- nil", "- none":
+		return true
+	}
+	return false
+}
+
 // AppendMemoryNote appends a new memory note for the user with a timestamp.
 func (s *MemoryStore) AppendMemoryNote(userID, userName, note string) error {
-	if userID == "" || strings.TrimSpace(note) == "" {
+	if s == nil || userID == "" || isGarbageMemoryNote(note) {
 		return nil
 	}
 
@@ -113,7 +126,7 @@ func (s *MemoryStore) AppendMemoryNote(userID, userName, note string) error {
 
 // UpdateUserProfile writes or updates a structured user profile markdown file.
 func (s *MemoryStore) UpdateUserProfile(userID, userName, profileMarkdown string) error {
-	if userID == "" || strings.TrimSpace(profileMarkdown) == "" {
+	if s == nil || userID == "" || isGarbageMemoryNote(profileMarkdown) {
 		return nil
 	}
 

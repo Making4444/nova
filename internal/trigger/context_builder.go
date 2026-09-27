@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"novabot/internal/storage"
@@ -43,6 +44,9 @@ type RequestPayload struct {
 	TimeOfDay            string           `json:"time_of_day"`
 	TimeSinceLastMessage string           `json:"time_since_last_message"`
 	MediaDataURL         *string          `json:"media_data_url,omitempty"`
+	StyleGuidance        *string          `json:"style_guidance,omitempty"`
+	AttentionLeaseActive bool             `json:"attention_lease_active,omitempty"`
+	TriggerReason        string           `json:"trigger_reason,omitempty"`
 }
 
 func getCairoTime() time.Time {
@@ -167,6 +171,10 @@ func BuildContext(
 		if log.MessageID == messageID {
 			continue
 		}
+		// Filter out noisy reaction placeholder logs
+		if strings.HasPrefix(strings.TrimSpace(log.Text), "[Reaction:") {
+			continue
+		}
 		recentContext = append(recentContext, ContextMessage{
 			SenderName: log.SenderName,
 			Text:       log.Text,
@@ -174,6 +182,10 @@ func BuildContext(
 			Timestamp:  log.Timestamp,
 		})
 		lastMsgTimestamp = log.Timestamp
+	}
+
+	if (historyLimit <= 0 || historyLimit > 40) && len(recentContext) > 35 {
+		recentContext = recentContext[len(recentContext)-35:]
 	}
 
 	// Calculate time and elapsed duration

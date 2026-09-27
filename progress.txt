@@ -1,0 +1,23 @@
+# NovaBot v2.0 — Autonomous Execution Progress Ledger
+
+[2026-09-26T08:35:00+03:00] PHASE 1: Scaffolding, Disk State & Contracts — COMPLETE
+  - [x] Created PRD.md with strict Personal WhatsApp Account Safety Invariant (no un-triggered DM auto-reply; Nova reply-ID verification; 90s post-trigger per-sender attention lease).
+  - [x] Created AGENTS.md defining workstream boundaries for domain-core-worker, persistence-infra-worker, api-transport-worker, and qa-verification-worker.
+  - [x] Locked shared data contracts in internal/ai/payload.go and internal/trigger/context_builder.go.
+
+[2026-09-26T09:10:00+03:00] PHASE 2: Domain Core & Persistence/Memory Sub-Agents — COMPLETE
+  - [x] `domain-core-worker`: Built `StyleDiversityFilter` (`internal/pacing/diversity.go`), `TurnCoalescer` (`internal/pacing/coalescer.go`), `HumanPacer` (`internal/pacing/pacer.go`), `AttentionGate` (`internal/trigger/attention.go`), repeated-letter Arabic normalizer (`internal/trigger/matcher.go`), and negation-aware PAD `emotion.Engine` (`internal/emotion/engine.go`). Verified `go vet` & `go test -race` exit 0.
+  - [x] `persistence-infra-worker`: Bounded default `CONTEXT_HISTORY_LIMIT` (`internal/config/config.go`), added `ChatLogger.IsNovaMessage` + null-note sanitization (`internal/storage/`), filtered `[Reaction:` noise (`internal/trigger/context_builder.go`), updated `ResponsePayload` v2 & `ParseResponse` (`internal/ai/`), removed `"تم البحث\n\n"`, added `frequency_penalty`/`presence_penalty`, injected `TimeSinceLastMessage` & `StyleGuidance`, and updated `config/system_prompt*.md`. Verified `go vet` & `go test -race` exit 0.
+
+[2026-09-27T18:50:00+03:00] PHASE 3: WhatsApp Transport, Presence Pacing & Main Composition Root Wiring — COMPLETE
+  - [x] Added `MarkRead`, `SendChatPresence`, `SendReaction`, and `SendText` to `internal/whatsapp/client.go`.
+  - [x] Added recursive `unwrapMessage` for ephemeral/view-once messages in `internal/whatsapp/media.go`.
+  - [x] Integrated `AttentionGate`, `TurnCoalescer` (with `*events.ChatPresence` typing extension), `HumanPacer`, `StyleDiversityFilter`, `TriTierEngine` message recording, and `dashboard.Server` telemetry into `internal/whatsapp/handler.go`.
+  - [x] Wired live `OpenRouterEmbedder`, `OpenRouterEpisodeSummarizer`, and `eventHandler.SetDashboard(dashServer)` in `cmd/novabot/main.go`.
+
+[2026-09-27T18:50:30+03:00] PHASE 4: Backpressure & End-to-End Verification Gate — COMPLETE
+  - [x] Added end-to-end integration tests in `internal/whatsapp/handler_v2_test.go` verifying Personal WhatsApp Account Safety (un-triggered 1-on-1 DMs & non-Nova replies ignored with zero presence/read emission), Nova message-ID reply verification across restarts, 90s attention lease lifecycle & `ignore` revocation, multi-bubble burst coalescing, anti-repetition `StyleGuidance` injection, and ephemeral message unwrapping.
+
+[2026-09-27T18:51:00+03:00] PHASE 5: Telemetry & Production Build Gate — COMPLETE
+  - [x] Verified `go build ./...`, `go vet ./...`, and `go test -race ./...` exit with code 0 across all packages.
+  - [x] Built production binary `novabot.exe`.

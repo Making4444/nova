@@ -284,3 +284,75 @@ func TestConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestArabicNegationAwareness(t *testing.T) {
+	tempDir := t.TempDir()
+	eng, err := NewEngine(tempDir)
+	if err != nil {
+		t.Fatalf("NewEngine failed: %v", err)
+	}
+
+	chatID := "negation_chat@s.whatsapp.net"
+	userID := "user_neg@s.whatsapp.net"
+
+	negatedPhrases := []string{
+		"انا مش زعلان خالص الحمد لله",
+		"والله مش مخنوق ولا متضايق",
+		"انا مبقتش تعبان دلوقتي",
+		"بطلت ازعل خلاص وانا غير حزين",
+	}
+
+	for _, phrase := range negatedPhrases {
+		st := eng.UpdateMood(chatID, userID, "Mina", phrase, false, "")
+		if st.CurrentMood == Empathetic || st.CurrentMood == Annoyed {
+			t.Errorf("phrase %q is negated and must NOT trigger Empathetic or Annoyed, got %s", phrase, st.CurrentMood)
+		}
+	}
+
+	// Verify direct isNegatedKeyword checks
+	if !isNegatedKeyword("انا مش زعلان", "زعلان") {
+		t.Errorf("expected isNegatedKeyword to be true for 'انا مش زعلان'")
+	}
+	if !isNegatedKeyword("مش متضايق خالص", "متضايق") {
+		t.Errorf("expected isNegatedKeyword to be true for 'مش متضايق خالص'")
+	}
+	if !isNegatedKeyword("انا مش مخنوق", "مخنوق") {
+		t.Errorf("expected isNegatedKeyword to be true for 'انا مش مخنوق'")
+	}
+	if isNegatedKeyword("انا زعلان جدا", "زعلان") {
+		t.Errorf("expected isNegatedKeyword to be false for 'انا زعلان جدا'")
+	}
+}
+
+func TestPADAndContinuousAffinity(t *testing.T) {
+	tempDir := t.TempDir()
+	eng, err := NewEngine(tempDir)
+	if err != nil {
+		t.Fatalf("NewEngine failed: %v", err)
+	}
+
+	chatID := "pad_chat@s.whatsapp.net"
+	userID := "user_pad@s.whatsapp.net"
+
+	stSweet := eng.UpdateMood(chatID, userID, "Sara", "تسلم يا احلى نوفا ربنا يسعدك ❤️", false, "sweet")
+	if stSweet.Pleasure <= 0.2 {
+		t.Errorf("expected Pleasure to increase after sweet message, got %f", stSweet.Pleasure)
+	}
+	if stSweet.UserAffinity[userID] <= 0.0 {
+		t.Errorf("expected continuous UserAffinity > 0 after sweet message, got %f", stSweet.UserAffinity[userID])
+	}
+
+	stRude := eng.UpdateMood(chatID, userID, "Sara", "انت بوت غبي ومستفز", false, "rude")
+	if stRude.Pleasure >= stSweet.Pleasure {
+		t.Errorf("expected Pleasure to drop after rude message, got %f (was %f)", stRude.Pleasure, stSweet.Pleasure)
+	}
+	if stRude.Dominance < 0.0 {
+		t.Errorf("expected Dominance to remain assertive (>= 0) on rude message, got %f", stRude.Dominance)
+	}
+
+	ctx := eng.BuildPromptContext(chatID, userID, "Sara", false)
+	if !strings.Contains(ctx, "PAD") {
+		t.Errorf("expected PAD coordinates in BuildPromptContext, got %s", ctx)
+	}
+}
+

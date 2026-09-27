@@ -24,9 +24,10 @@ type LogMessage struct {
 
 // ChatLogger manages appending and reading JSONL logs segregated per chat.
 type ChatLogger struct {
-	baseDir string
-	mu      sync.RWMutex
-	fileMu  map[string]*sync.Mutex
+	baseDir      string
+	mu           sync.RWMutex
+	fileMu       map[string]*sync.Mutex
+	novaMsgCache map[string]bool
 }
 
 // NewChatLogger creates a new ChatLogger instance.
@@ -46,8 +47,9 @@ func NewChatLogger(baseDir string) (*ChatLogger, error) {
 	}
 
 	return &ChatLogger{
-		baseDir: baseDir,
-		fileMu:  make(map[string]*sync.Mutex),
+		baseDir:      baseDir,
+		fileMu:       make(map[string]*sync.Mutex),
+		novaMsgCache: make(map[string]bool),
 	}, nil
 }
 
@@ -87,9 +89,17 @@ func (l *ChatLogger) AppendMessage(chatType, chatID string, msg LogMessage) erro
 		msg.Timestamp = time.Now().Format(time.RFC3339)
 	}
 
-	// Always ensure Nova is identified correctly
+	// Always ensure Nova is identified correctly and cached for fast reply verification
 	if msg.IsNova {
 		msg.SenderName = "Nova"
+		if msg.MessageID != "" {
+			l.mu.Lock()
+			if l.novaMsgCache == nil {
+				l.novaMsgCache = make(map[string]bool)
+			}
+			l.novaMsgCache[msg.MessageID] = true
+			l.mu.Unlock()
+		}
 	}
 
 	filePath := l.getFilePath(chatType, chatID)
@@ -113,6 +123,48 @@ func (l *ChatLogger) AppendMessage(chatType, chatID string, msg LogMessage) erro
 	}
 
 	return nil
+}
+
+// IsNovaMessage checks whether a given messageID was sent by Nova.
+// It checks the in-memory novaMsgCache first (O(1) fast path), and if not found,
+// scans recent messages in the chat's JSONL file to populate the cache and verify across restarts.
+func (l *ChatLogger) IsNovaMessage(chatType, chatID, messageID string) bool {
+	if l == nil {
+		return false
+	}
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
+		return false
+	}
+
+	l.mu.RLock()
+	if l.novaMsgCache != nil && l.novaMsgCache[messageID] {
+		l.mu.RUnlock()
+		return true
+	}
+	l.mu.RUnlock()
+
+	msgs, err := l.GetRecentMessages(chatType, chatID, 200)
+	if err != nil {
+		return false
+	}
+
+	found := false
+	l.mu.Lock()
+	if l.novaMsgCache == nil {
+		l.novaMsgCache = make(map[string]bool)
+	}
+	for _, m := range msgs {
+		if m.IsNova && m.MessageID != "" {
+			l.novaMsgCache[m.MessageID] = true
+			if m.MessageID == messageID {
+				found = true
+			}
+		}
+	}
+	l.mu.Unlock()
+
+	return found
 }
 
 // GetRecentMessages reads the last N messages from the specific chat's JSONL file.

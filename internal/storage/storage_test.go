@@ -198,3 +198,94 @@ func TestChatLoggerArchiving(t *testing.T) {
 	}
 }
 
+func TestIsNovaMessage(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "novabot_isnova_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	logger, err := NewChatLogger(tempDir)
+	if err != nil {
+		t.Fatalf("NewChatLogger failed: %v", err)
+	}
+
+	chatID := "201001234567@s.whatsapp.net"
+
+	// 1. Human owner / contact message (IsNova: false)
+	_ = logger.AppendMessage("private", chatID, LogMessage{
+		MessageID:  "HUMAN_MSG_1",
+		SenderID:   "201202172699@s.whatsapp.net",
+		SenderName: "Makari",
+		Text:       "انا نازل دلوقتي",
+		IsNova:     false,
+	})
+
+	// 2. Nova bot message (IsNova: true)
+	_ = logger.AppendMessage("private", chatID, LogMessage{
+		MessageID:  "NOVA_MSG_2",
+		SenderID:   "201202172699@s.whatsapp.net",
+		SenderName: "Nova",
+		Text:       "تروح وترجع بالسلامة يا هندسة",
+		IsNova:     true,
+	})
+
+	// Fast-path cache verification
+	if logger.IsNovaMessage("private", chatID, "HUMAN_MSG_1") {
+		t.Errorf("expected HUMAN_MSG_1 to return false")
+	}
+	if !logger.IsNovaMessage("private", chatID, "NOVA_MSG_2") {
+		t.Errorf("expected NOVA_MSG_2 to return true from cache")
+	}
+	if logger.IsNovaMessage("private", chatID, "") {
+		t.Errorf("expected empty messageID to return false")
+	}
+
+	// Disk-reload verification across simulated bot restart
+	restartedLogger, err := NewChatLogger(tempDir)
+	if err != nil {
+		t.Fatalf("NewChatLogger restart failed: %v", err)
+	}
+
+	if restartedLogger.IsNovaMessage("private", chatID, "HUMAN_MSG_1") {
+		t.Errorf("expected HUMAN_MSG_1 to return false after restart")
+	}
+	if !restartedLogger.IsNovaMessage("private", chatID, "NOVA_MSG_2") {
+		t.Errorf("expected NOVA_MSG_2 to return true after disk reload")
+	}
+}
+
+func TestMemoryStore_RejectNullNotes(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "novabot_mem_null_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	memStore, err := NewMemoryStore(tempDir)
+	if err != nil {
+		t.Fatalf("NewMemoryStore failed: %v", err)
+	}
+
+	userID := "201009998887@s.whatsapp.net"
+	garbageNotes := []string{"", "   ", "null", "NULL", "nil", "none", "لا يوجد", "مافيش", "- null"}
+
+	for _, g := range garbageNotes {
+		if err := memStore.AppendMemoryNote(userID, "Tina", g); err != nil {
+			t.Fatalf("AppendMemoryNote(%q) returned unexpected error: %v", g, err)
+		}
+		if err := memStore.UpdateUserProfile(userID, "Tina", g); err != nil {
+			t.Fatalf("UpdateUserProfile(%q) returned unexpected error: %v", g, err)
+		}
+	}
+
+	mem, err := memStore.GetUserMemory(userID)
+	if err != nil {
+		t.Fatalf("GetUserMemory failed: %v", err)
+	}
+	if mem != "" {
+		t.Errorf("expected no memory file content written for garbage notes, got: %q", mem)
+	}
+}
+
+

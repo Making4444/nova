@@ -26,9 +26,7 @@ func NormalizeForMatch(s string) string {
 	res := strings.ToLower(s)
 
 	// 2. Normalize Arabic characters and strip Tashkeel/Tatweel
-	var b strings.Builder
-	b.Grow(len(res))
-
+	var mapped []rune
 	for _, r := range res {
 		if isArabicDiacriticOrTatweel(r) {
 			continue
@@ -36,24 +34,44 @@ func NormalizeForMatch(s string) string {
 
 		switch r {
 		case 'أ', 'إ', 'آ', 'ٱ':
-			b.WriteRune('ا')
+			mapped = append(mapped, 'ا')
 		case 'ة':
-			b.WriteRune('ه')
+			mapped = append(mapped, 'ه')
 		case 'ى':
-			b.WriteRune('ي')
+			mapped = append(mapped, 'ي')
 		case 'ؤ', 'ئ':
-			b.WriteRune('ء')
+			mapped = append(mapped, 'ء')
 		default:
 			// Strip punctuation and special symbols from matching copy, replace with space
 			if unicode.IsPunct(r) || unicode.IsSymbol(r) {
-				b.WriteRune(' ')
+				mapped = append(mapped, ' ')
 			} else {
-				b.WriteRune(r)
+				mapped = append(mapped, r)
 			}
 		}
 	}
 
-	// 3. Collapse consecutive whitespace and trim
+	// 3. Collapse 3+ consecutive identical Arabic characters (e.g. "نووووفا" -> "نوفا", "ياااا" -> "يا")
+	var b strings.Builder
+	b.Grow(len(res))
+	for i := 0; i < len(mapped); {
+		r := mapped[i]
+		j := i + 1
+		for j < len(mapped) && mapped[j] == r {
+			j++
+		}
+		runLen := j - i
+		if r >= 0x0600 && r <= 0x06FF && runLen >= 3 {
+			b.WriteRune(r)
+		} else {
+			for k := 0; k < runLen; k++ {
+				b.WriteRune(r)
+			}
+		}
+		i = j
+	}
+
+	// 4. Collapse consecutive whitespace and trim
 	return strings.TrimSpace(whitespaceRegex.ReplaceAllString(b.String(), " "))
 }
 

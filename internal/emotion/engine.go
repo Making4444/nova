@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // MoodType represents Nova's current emotional and behavioral state.
@@ -20,6 +21,14 @@ const (
 	Empathetic MoodType = "Empathetic" // متعاطف وجدع
 	Calm       MoodType = "Calm"       // رزين
 	Sarcastic  MoodType = "Sarcastic"  // متريق
+
+	// Aliases for convenience
+	MoodJoyful     MoodType = Joyful
+	MoodHyped      MoodType = Hyped
+	MoodAnnoyed    MoodType = Annoyed
+	MoodEmpathetic MoodType = Empathetic
+	MoodCalm       MoodType = Calm
+	MoodSarcastic  MoodType = Sarcastic
 )
 
 // ArabicLabel returns the Egyptian Arabic label and description of the mood.
@@ -44,11 +53,15 @@ func (m MoodType) ArabicLabel() string {
 
 // EmotionalState holds the current emotional simulation parameters for a specific chat.
 type EmotionalState struct {
-	CurrentMood     MoodType       `json:"current_mood"`
-	EnergyLevel     int            `json:"energy_level"`    // 1 to 10
-	UserAffinities  map[string]int `json:"user_affinities"` // User JID -> affinity score (0-100; Maker is locked at 100)
-	LastInteraction time.Time      `json:"last_interaction"`
-	RecentTriggers  []string       `json:"recent_triggers"`
+	CurrentMood     MoodType           `json:"current_mood"`
+	EnergyLevel     int                `json:"energy_level"`    // 1 to 10
+	UserAffinities  map[string]int     `json:"user_affinities"` // User JID -> affinity score (0-100; Maker is locked at 100)
+	Pleasure        float64            `json:"pleasure"`        // Continuous Pleasure in [-1.0, 1.0]
+	Arousal         float64            `json:"arousal"`         // Continuous Arousal in [-1.0, 1.0]
+	Dominance       float64            `json:"dominance"`       // Continuous Dominance in [-1.0, 1.0]
+	UserAffinity    map[string]float64 `json:"user_affinity"`   // User JID -> continuous affinity in [-1.0, 1.0]
+	LastInteraction time.Time          `json:"last_interaction"`
+	RecentTriggers  []string           `json:"recent_triggers"`
 }
 
 // Engine manages emotional states across all chats with persistent JSON storage.
@@ -71,6 +84,16 @@ func getCairoTime() time.Time {
 func sanitizeID(id string) string {
 	replacer := strings.NewReplacer(":", "_", "/", "_", "\\", "_", "<", "_", ">", "_", "|", "_", "?", "_", "*", "_", "\"", "_")
 	return replacer.Replace(id)
+}
+
+func clampUnit(v float64) float64 {
+	if v > 1.0 {
+		return 1.0
+	}
+	if v < -1.0 {
+		return -1.0
+	}
+	return v
 }
 
 // NewEngine creates and initializes the emotion simulation engine.
@@ -98,6 +121,41 @@ func (e *Engine) SetNowFunc(fn func() time.Time) {
 	e.nowFunc = fn
 }
 
+func (e *Engine) getNow() time.Time {
+	e.mu.RLock()
+	fn := e.nowFunc
+	e.mu.RUnlock()
+	if fn != nil {
+		return fn()
+	}
+	return time.Now()
+}
+
+func cloneState(st *EmotionalState) *EmotionalState {
+	if st == nil {
+		return nil
+	}
+	cp := &EmotionalState{
+		CurrentMood:     st.CurrentMood,
+		EnergyLevel:     st.EnergyLevel,
+		UserAffinities:  make(map[string]int, len(st.UserAffinities)),
+		Pleasure:        st.Pleasure,
+		Arousal:         st.Arousal,
+		Dominance:       st.Dominance,
+		UserAffinity:    make(map[string]float64, len(st.UserAffinity)),
+		LastInteraction: st.LastInteraction,
+		RecentTriggers:  make([]string, len(st.RecentTriggers)),
+	}
+	for k, v := range st.UserAffinities {
+		cp.UserAffinities[k] = v
+	}
+	for k, v := range st.UserAffinity {
+		cp.UserAffinity[k] = v
+	}
+	copy(cp.RecentTriggers, st.RecentTriggers)
+	return cp
+}
+
 func (e *Engine) getChatMutex(chatID string) *sync.Mutex {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -121,6 +179,10 @@ func (e *Engine) GetState(chatID string) *EmotionalState {
 			CurrentMood:     Joyful,
 			EnergyLevel:     7,
 			UserAffinities:  make(map[string]int),
+			Pleasure:        0.2,
+			Arousal:         0.1,
+			Dominance:       0.2,
+			UserAffinity:    make(map[string]float64),
 			LastInteraction: time.Now(),
 			RecentTriggers:  make([]string, 0),
 		}
@@ -129,46 +191,63 @@ func (e *Engine) GetState(chatID string) *EmotionalState {
 	cmu.Lock()
 	defer cmu.Unlock()
 
-	return e.getStateLocked(chatID)
+	return cloneState(e.getStateLocked(chatID))
 }
 
 func (e *Engine) getStateLocked(chatID string) *EmotionalState {
-	if st, ok := e.states[chatID]; ok && st != nil {
+	e.mu.RLock()
+	st, ok := e.states[chatID]
+	e.mu.RUnlock()
+	if ok && st != nil {
+		if st.UserAffinities == nil {
+			st.UserAffinities = make(map[string]int)
+		}
+		if st.UserAffinity == nil {
+			st.UserAffinity = make(map[string]float64)
+		}
 		return st
 	}
 
 	filePath := e.getFilePath(chatID)
 	if data, err := os.ReadFile(filePath); err == nil {
-		var st EmotionalState
-		if err := json.Unmarshal(data, &st); err == nil {
-			if st.UserAffinities == nil {
-				st.UserAffinities = make(map[string]int)
+		var loaded EmotionalState
+		if err := json.Unmarshal(data, &loaded); err == nil {
+			if loaded.UserAffinities == nil {
+				loaded.UserAffinities = make(map[string]int)
 			}
-			if st.EnergyLevel <= 0 {
-				st.EnergyLevel = 7
+			if loaded.UserAffinity == nil {
+				loaded.UserAffinity = make(map[string]float64)
 			}
-			if st.CurrentMood == "" {
-				st.CurrentMood = Joyful
+			if loaded.EnergyLevel <= 0 {
+				loaded.EnergyLevel = 7
 			}
-			e.states[chatID] = &st
-			return &st
+			if loaded.CurrentMood == "" {
+				loaded.CurrentMood = Joyful
+			}
+			e.mu.Lock()
+			e.states[chatID] = &loaded
+			e.mu.Unlock()
+			return &loaded
 		}
 	}
 
-	now := time.Now()
-	if e.nowFunc != nil {
-		now = e.nowFunc()
-	}
+	now := e.getNow()
 
-	st := &EmotionalState{
+	newSt := &EmotionalState{
 		CurrentMood:     Joyful,
 		EnergyLevel:     7,
 		UserAffinities:  make(map[string]int),
+		Pleasure:        0.2,
+		Arousal:         0.1,
+		Dominance:       0.2,
+		UserAffinity:    make(map[string]float64),
 		LastInteraction: now,
 		RecentTriggers:  make([]string, 0),
 	}
-	e.states[chatID] = st
-	return st
+	e.mu.Lock()
+	e.states[chatID] = newSt
+	e.mu.Unlock()
+	return newSt
 }
 
 func (e *Engine) saveStateLocked(chatID string, st *EmotionalState) error {
@@ -201,6 +280,10 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 			CurrentMood:     Joyful,
 			EnergyLevel:     7,
 			UserAffinities:  make(map[string]int),
+			Pleasure:        0.2,
+			Arousal:         0.1,
+			Dominance:       0.2,
+			UserAffinity:    make(map[string]float64),
 			LastInteraction: time.Now(),
 			RecentTriggers:  make([]string, 0),
 		}
@@ -210,17 +293,25 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 	defer cmu.Unlock()
 
 	st := e.getStateLocked(chatID)
-	now := time.Now()
-	if e.nowFunc != nil {
-		now = e.nowFunc()
-	}
+	now := e.getNow()
 
-	// 1. Maintain user affinities
+	// Smooth PAD decay toward baseline (Pleasure: 0.2, Arousal: 0.1, Dominance: 0.2)
+	st.Pleasure = clampUnit(st.Pleasure*0.85 + 0.2*0.15)
+	st.Arousal = clampUnit(st.Arousal*0.85 + 0.1*0.15)
+	st.Dominance = clampUnit(st.Dominance*0.85 + 0.2*0.15)
+
+	// 1. Maintain user affinities (both integer 0-100 and continuous [-1.0, 1.0])
 	if senderID != "" {
 		if isMaker {
 			st.UserAffinities[senderID] = 100 // Maker is permanently locked at 100
-		} else if _, exists := st.UserAffinities[senderID]; !exists {
-			st.UserAffinities[senderID] = 50 // Default baseline affinity for new users
+			st.UserAffinity[senderID] = 1.0
+		} else {
+			if _, exists := st.UserAffinities[senderID]; !exists {
+				st.UserAffinities[senderID] = 50 // Default baseline affinity for new users
+			}
+			if _, exists := st.UserAffinity[senderID]; !exists {
+				st.UserAffinity[senderID] = 0.0
+			}
 		}
 	}
 
@@ -232,14 +323,26 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 	isRude := detectRude(sentLower, textLower)
 	isSweet := detectSweet(sentLower, textLower)
 
-	// 2. Emotional state transitions
+	// 2. Emotional state transitions and PAD shifts
 	if isSad {
 		st.CurrentMood = Empathetic
 		st.EnergyLevel = 4
+		st.Pleasure = clampUnit(st.Pleasure - 0.50)
+		st.Arousal = clampUnit(st.Arousal - 0.30)
+		st.Dominance = clampUnit(0.10)
+		if senderID != "" && !isMaker {
+			st.UserAffinity[senderID] = clampUnit(st.UserAffinity[senderID] + 0.05)
+		}
 		e.addTrigger(st, "حزن أو تعب أو مشكلة عند المتحدث (مواساة وتضامن)")
 	} else if isEnergetic {
 		st.CurrentMood = Hyped
 		st.EnergyLevel = 9
+		st.Pleasure = clampUnit(st.Pleasure + 0.35)
+		st.Arousal = clampUnit(st.Arousal + 0.55)
+		st.Dominance = clampUnit(st.Dominance + 0.25)
+		if senderID != "" && !isMaker {
+			st.UserAffinity[senderID] = clampUnit(st.UserAffinity[senderID] + 0.10)
+		}
 		e.addTrigger(st, "حماس وروشنة وكلام سريع في الشات")
 	} else if isRude {
 		if st.CurrentMood == Annoyed {
@@ -250,21 +353,29 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 		if st.EnergyLevel < 6 {
 			st.EnergyLevel = 6
 		}
+		st.Pleasure = clampUnit(st.Pleasure - 0.45)
+		st.Arousal = clampUnit(st.Arousal + 0.35)
+		st.Dominance = clampUnit(st.Dominance + 0.35)
 		if senderID != "" && !isMaker {
 			st.UserAffinities[senderID] -= 10
 			if st.UserAffinities[senderID] < 0 {
 				st.UserAffinities[senderID] = 0
 			}
+			st.UserAffinity[senderID] = clampUnit(st.UserAffinity[senderID] - 0.20)
 		}
 		e.addTrigger(st, "كلام مستفز أو إهانة (تقليل الود ولسان حامي)")
 	} else if isSweet {
 		st.CurrentMood = Joyful
 		st.EnergyLevel = 8
+		st.Pleasure = clampUnit(st.Pleasure + 0.40)
+		st.Arousal = clampUnit(st.Arousal + 0.20)
+		st.Dominance = clampUnit(st.Dominance + 0.15)
 		if senderID != "" && !isMaker {
 			st.UserAffinities[senderID] += 10
 			if st.UserAffinities[senderID] > 100 {
 				st.UserAffinities[senderID] = 100
 			}
+			st.UserAffinity[senderID] = clampUnit(st.UserAffinity[senderID] + 0.20)
 		}
 		e.addTrigger(st, "تقدير ومدح وذوق عالي من المتحدث (زيادة الود والبهجة)")
 	}
@@ -274,6 +385,9 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 	if hour >= 1 && hour < 6 {
 		if st.EnergyLevel > 4 {
 			st.EnergyLevel = 4
+		}
+		if st.Arousal > -0.2 {
+			st.Arousal = -0.2
 		}
 		if st.CurrentMood == Hyped && !isEnergetic {
 			st.CurrentMood = Calm
@@ -288,9 +402,13 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 	if st.EnergyLevel < 1 {
 		st.EnergyLevel = 1
 	}
+	st.Pleasure = clampUnit(st.Pleasure)
+	st.Arousal = clampUnit(st.Arousal)
+	st.Dominance = clampUnit(st.Dominance)
 
 	if senderID != "" && isMaker {
 		st.UserAffinities[senderID] = 100
+		st.UserAffinity[senderID] = 1.0
 	}
 
 	st.LastInteraction = now
@@ -298,7 +416,7 @@ func (e *Engine) UpdateMood(chatID, senderID, senderName, messageText string, is
 	// 5. Persist to disk
 	_ = e.saveStateLocked(chatID, st)
 
-	return st
+	return cloneState(st)
 }
 
 // BuildPromptContext generates a rich Egyptian Arabic prompt context detailing Nova's emotional state.
@@ -312,11 +430,20 @@ func (e *Engine) BuildPromptContext(chatID string, senderID string, senderName s
 	}
 
 	affinity := 50
+	affinityFloat := 0.0
 	if isMaker {
 		affinity = 100
-	} else if senderID != "" && st.UserAffinities != nil {
-		if val, exists := st.UserAffinities[senderID]; exists {
-			affinity = val
+		affinityFloat = 1.0
+	} else if senderID != "" {
+		if st.UserAffinities != nil {
+			if val, exists := st.UserAffinities[senderID]; exists {
+				affinity = val
+			}
+		}
+		if st.UserAffinity != nil {
+			if val, exists := st.UserAffinity[senderID]; exists {
+				affinityFloat = val
+			}
 		}
 	}
 
@@ -379,6 +506,9 @@ func (e *Engine) BuildPromptContext(chatID string, senderID string, senderName s
 		}
 	}
 
+	padSummary := fmt.Sprintf("\n- **إحداثيات الانفعال (PAD):** بهجة=%.2f | يقظة=%.2f | هيمنة=%.2f | مؤشر الألفة=%.2f",
+		st.Pleasure, st.Arousal, st.Dominance, affinityFloat)
+
 	var triggersSummary string
 	if len(st.RecentTriggers) > 0 {
 		triggersSummary = fmt.Sprintf("\n- **آخر مؤثرات نفسية بالشات:** %s", strings.Join(st.RecentTriggers, " | "))
@@ -387,26 +517,126 @@ func (e *Engine) BuildPromptContext(chatID string, senderID string, senderName s
 	return fmt.Sprintf(`### 🎭 الحالة المزاجية والانفعالية الحالية لنوفا (Nova's Emotional State):
 - **المزاج العام:** %s
 - **مستوى الطاقة:** %d/10 - %s
-- **طبيعة العلاقة مع المتحدث:** %s%s
+- **طبيعة العلاقة مع المتحدث:** %s%s%s
 - **توجيه النبرة والسلوك:** %s`,
 		moodDesc,
 		st.EnergyLevel,
 		energyDesc,
 		relationshipDesc,
+		padSummary,
 		triggersSummary,
 		directive,
 	)
 }
 
-// Detection helpers
+// Arabic Negation & Detection helpers
 
-func detectSadness(sentiment, text string) bool {
-	if strings.Contains(sentiment, "sad") || strings.Contains(sentiment, "sick") ||
-		strings.Contains(sentiment, "trouble") || strings.Contains(sentiment, "empath") ||
-		strings.Contains(sentiment, "grief") || strings.Contains(sentiment, "depress") {
-		return true
+var arabicNegationParticles = map[string]bool{
+	"مش":      true,
+	"ما":      true,
+	"مبقتش":   true,
+	"مابقيتش": true,
+	"مبقتيش":  true,
+	"بطلت":    true,
+	"بطلنا":   true,
+	"غير":     true,
+	"لا":      true,
+	"ولا":     true,
+	"لم":      true,
+	"لن":      true,
+	"بدون":    true,
+	"منيش":    true,
+	"مانيش":   true,
+	"معدتش":   true,
+}
+
+var arabicContrastParticles = map[string]bool{
+	"بس":   true,
+	"لكن":  true,
+	"ولكن": true,
+	"انما": true,
+	"إنما": true,
+}
+
+func normalizeNegWord(w string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(w)) {
+		if (r >= 0x064B && r <= 0x065F) || r == 0x0670 || r == 0x0640 {
+			continue
+		}
+		if unicode.IsPunct(r) || unicode.IsSymbol(r) {
+			continue
+		}
+		switch r {
+		case 'أ', 'إ', 'آ', 'ٱ':
+			b.WriteRune('ا')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// isNegatedKeyword checks if the occurrences of kw in text are preceded within 1-2 words
+// by an Arabic negation particle ("مش ", "ما ", "مبقتش ", "بطلت ", "غير ", "لا ", "ولا ").
+func isNegatedKeyword(text, kw string) bool {
+	if text == "" || kw == "" {
+		return false
+	}
+	idx := strings.Index(text, kw)
+	if idx < 0 {
+		return false
 	}
 
+	searchFrom := 0
+	foundAny := false
+	allNegated := true
+
+	for searchFrom < len(text) {
+		relIdx := strings.Index(text[searchFrom:], kw)
+		if relIdx < 0 {
+			break
+		}
+		absIdx := searchFrom + relIdx
+		foundAny = true
+
+		prefix := text[:absIdx]
+		// Clean punctuation in prefix into spaces
+		var pb strings.Builder
+		for _, r := range prefix {
+			if unicode.IsPunct(r) || unicode.IsSymbol(r) {
+				pb.WriteRune(' ')
+			} else {
+				pb.WriteRune(r)
+			}
+		}
+		words := strings.Fields(pb.String())
+
+		occNegated := false
+		if len(words) >= 1 {
+			w1 := normalizeNegWord(words[len(words)-1])
+			if arabicNegationParticles[w1] {
+				occNegated = true
+			} else if len(words) >= 2 && !arabicContrastParticles[w1] {
+				w2 := normalizeNegWord(words[len(words)-2])
+				if arabicNegationParticles[w2] {
+					occNegated = true
+				}
+			}
+		}
+
+		if !occNegated {
+			allNegated = false
+			break
+		}
+
+		searchFrom = absIdx + len(kw)
+	}
+
+	return foundAny && allNegated
+}
+
+func detectSadness(sentiment, text string) bool {
 	sadKeywords := []string{
 		"تعبان", "عيان", "مريض", "في المستشفى", "سخن", "متضايق", "زعلان", "حزين", "مخنوق",
 		"بموت", "ادعيلي", "واقع في مشكلة", "مصيبة", "وفاة", "اتوفى", "لا قدر الله",
@@ -414,70 +644,99 @@ func detectSadness(sentiment, text string) bool {
 		"زعلانة", "عيانة", "مريضة", "عندي مشكلة", "حادثة", "انفصلنا", "سقطت",
 	}
 
+	hasNegatedSad := false
 	for _, kw := range sadKeywords {
 		if strings.Contains(text, kw) {
-			return true
+			if !isNegatedKeyword(text, kw) {
+				return true
+			}
+			hasNegatedSad = true
 		}
 	}
 
 	// Check standalone "مات" safely
 	paddedText := " " + text + " "
 	if !strings.Contains(text, "ماتش") && strings.Contains(paddedText, " مات ") {
+		if !isNegatedKeyword(text, "مات") {
+			return true
+		}
+		hasNegatedSad = true
+	}
+
+	if hasNegatedSad {
+		return false
+	}
+
+	if strings.Contains(sentiment, "sad") || strings.Contains(sentiment, "sick") ||
+		strings.Contains(sentiment, "trouble") || strings.Contains(sentiment, "empath") ||
+		strings.Contains(sentiment, "grief") || strings.Contains(sentiment, "depress") {
 		return true
 	}
+
 	return false
 }
 
 func detectEnergeticBanter(sentiment, text string) bool {
-	if strings.Contains(sentiment, "hype") || strings.Contains(sentiment, "energet") ||
-		strings.Contains(sentiment, "excit") || strings.Contains(sentiment, "banter") ||
-		strings.Contains(sentiment, "fun") {
-		return true
-	}
-
 	hypeKeywords := []string{
 		"يلا", "عاش", "يا بطل", "يا وحش", "حماس", "جامد", "ولعت", "نار", "خربانة",
 		"سهرة", "ماتش", "جون", "كسبنا", "فوزنا", "مبروك", "احتفال", "هوبا", "بيس",
 		"عظمة", "أوبا", "طرش", "حريقة", "عاش يا رجالة", "بوم", "🚀", "🔥", "🎉", "🥳", "⚡",
 	}
 
+	hasNegatedHype := false
 	for _, kw := range hypeKeywords {
 		if strings.Contains(text, kw) {
-			return true
+			if !isNegatedKeyword(text, kw) {
+				return true
+			}
+			hasNegatedHype = true
 		}
 	}
+
+	if hasNegatedHype {
+		return false
+	}
+
+	if strings.Contains(sentiment, "hype") || strings.Contains(sentiment, "energet") ||
+		strings.Contains(sentiment, "excit") || strings.Contains(sentiment, "banter") ||
+		strings.Contains(sentiment, "fun") {
+		return true
+	}
+
 	return false
 }
 
 func detectRude(sentiment, text string) bool {
-	if strings.Contains(sentiment, "rude") || strings.Contains(sentiment, "annoy") ||
-		strings.Contains(sentiment, "toxic") || strings.Contains(sentiment, "insult") ||
-		strings.Contains(sentiment, "angry") {
-		return true
-	}
-
 	rudeKeywords := []string{
 		"غبي", "غبية", "اخرس", "اسكت", "تافه", "بوت عبيط", "زفت", "حمار", "يا حمار",
 		"يا غبي", "قليل الادب", "مقرف", "بطل رغي", "صدعتنا", "اكتم", "انطم", "سخيف",
 		"رخم", "غتيت", "مستفز", "هبل", "مجنون", "أهبل", "حيوان",
 	}
 
+	hasNegatedRude := false
 	for _, kw := range rudeKeywords {
 		if strings.Contains(text, kw) {
-			return true
+			if !isNegatedKeyword(text, kw) {
+				return true
+			}
+			hasNegatedRude = true
 		}
 	}
+
+	if hasNegatedRude {
+		return false
+	}
+
+	if strings.Contains(sentiment, "rude") || strings.Contains(sentiment, "annoy") ||
+		strings.Contains(sentiment, "toxic") || strings.Contains(sentiment, "insult") ||
+		strings.Contains(sentiment, "angry") {
+		return true
+	}
+
 	return false
 }
 
 func detectSweet(sentiment, text string) bool {
-	if strings.Contains(sentiment, "sweet") || strings.Contains(sentiment, "appreciat") ||
-		strings.Contains(sentiment, "loving") || strings.Contains(sentiment, "friendly") ||
-		strings.Contains(sentiment, "grateful") || strings.Contains(sentiment, "joy") ||
-		strings.Contains(sentiment, "happy") {
-		return true
-	}
-
 	sweetKeywords := []string{
 		"تسلم", "شكرا", "حبيبي", "يا غالي", "ربنا يخليك", "بحبك", "منور", "جدع",
 		"كلك ذوق", "اصيل", "يا برنس", "ما قصرت", "تسلم ايدك", "كتر خيرك", "ربنا يسعدك",
@@ -485,10 +744,26 @@ func detectSweet(sentiment, text string) bool {
 		"ذوق", "❤️", "💖", "🥰", "🌹",
 	}
 
+	hasNegatedSweet := false
 	for _, kw := range sweetKeywords {
 		if strings.Contains(text, kw) {
-			return true
+			if !isNegatedKeyword(text, kw) {
+				return true
+			}
+			hasNegatedSweet = true
 		}
 	}
+
+	if hasNegatedSweet {
+		return false
+	}
+
+	if strings.Contains(sentiment, "sweet") || strings.Contains(sentiment, "appreciat") ||
+		strings.Contains(sentiment, "loving") || strings.Contains(sentiment, "friendly") ||
+		strings.Contains(sentiment, "grateful") || strings.Contains(sentiment, "joy") ||
+		strings.Contains(sentiment, "happy") {
+		return true
+	}
+
 	return false
 }

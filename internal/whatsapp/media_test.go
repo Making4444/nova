@@ -174,3 +174,37 @@ func TestIsVoiceRequested(t *testing.T) {
 		}
 	}
 }
+
+func TestUnwrapEphemeralAndViewOnce(t *testing.T) {
+	ephemeralText := &waE2E.Message{
+		EphemeralMessage: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{
+				Conversation: proto.String("يا نوفا رسالة مؤقتة"),
+			},
+		},
+	}
+	text, isReply, _, _, _ := ExtractTextAndReply(ephemeralText)
+	if text != "يا نوفا رسالة مؤقتة" || isReply {
+		t.Errorf("expected unwrapped ephemeral text, got %q (isReply=%v)", text, isReply)
+	}
+
+	viewOnceImg := &waE2E.Message{
+		ViewOnceMessageV2: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{
+				ImageMessage: &waE2E.ImageMessage{
+					Caption:  proto.String("يا نوفا شوفي الصورة دي"),
+					Mimetype: proto.String("image/jpeg"),
+				},
+			},
+		},
+	}
+	text, _, _, _, _ = ExtractTextAndReply(viewOnceImg)
+	if text != "يا نوفا شوفي الصورة دي" {
+		t.Errorf("expected unwrapped view-once caption, got %q", text)
+	}
+	dl, mime := ExtractDownloadableMedia(viewOnceImg)
+	if dl == nil || mime != "image/jpeg" {
+		t.Errorf("expected unwrapped view-once downloadable image, got dl=%v, mime=%q", dl, mime)
+	}
+}
+
