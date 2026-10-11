@@ -11,6 +11,12 @@ import (
 
 // Config holds all configuration parameters for Nova Bot.
 type Config struct {
+	SignorAPIKey        string
+	SignorChatBaseURL   string
+	SignorChatModel     string
+	SignorGeminiBaseURL string
+	SignorTTSBaseURL    string
+	SignorTTSModel      string
 	OpenRouterAPIKey    string
 	ModelChat           string
 	ModelMath           string
@@ -37,6 +43,34 @@ func LoadConfig() (*Config, error) {
 	// Attempt to load .env file; do not fail if missing as env vars might be passed directly.
 	_ = godotenv.Load()
 
+	signorKey := strings.TrimSpace(os.Getenv("SIGNOR_API_KEY"))
+	signorKey = strings.Trim(signorKey, "\"'`")
+
+	signorChatBase := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_BASE_URL"))
+	if signorChatBase == "" {
+		signorChatBase = "https://api.code.signor.ai/api-3/v1"
+	}
+
+	signorChatModel := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_MODEL"))
+	if signorChatModel == "" {
+		signorChatModel = "gpt-6-luna"
+	}
+
+	signorGeminiBase := strings.TrimSpace(os.Getenv("SIGNOR_GEMINI_BASE_URL"))
+	if signorGeminiBase == "" {
+		signorGeminiBase = "https://api.code.signor.ai/api-4/v1"
+	}
+
+	signorTTSBase := strings.TrimSpace(os.Getenv("SIGNOR_TTS_BASE_URL"))
+	if signorTTSBase == "" {
+		signorTTSBase = "https://api.code.signor.ai/api-2/v1"
+	}
+
+	signorTTSModel := strings.TrimSpace(os.Getenv("SIGNOR_TTS_MODEL"))
+	if signorTTSModel == "" {
+		signorTTSModel = "gemini-3.8-flash-tts"
+	}
+
 	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	apiKey = strings.Trim(apiKey, "\"'`")
 	groqKey := strings.TrimSpace(os.Getenv("GROQ_API_KEY"))
@@ -46,28 +80,28 @@ func LoadConfig() (*Config, error) {
 	if modelChat == "" {
 		modelChat = strings.TrimSpace(os.Getenv("OPENROUTER_MODEL"))
 		if modelChat == "" {
-			modelChat = "openai/gpt-5.6-luna"
+			modelChat = signorChatModel
 		}
 	}
 
 	modelMath := os.Getenv("MODEL_MATH")
 	if modelMath == "" {
-		modelMath = "nvidia/nemotron-3-super-120b-a12b"
+		modelMath = "gemini-3.8-flash"
 	}
 
 	modelAcademic := os.Getenv("MODEL_ACADEMIC")
 	if modelAcademic == "" {
-		modelAcademic = "google/gemini-3.8-flash"
+		modelAcademic = "gemini-3.8-flash"
 	}
 
 	modelVision := os.Getenv("MODEL_VISION")
 	if modelVision == "" {
-		modelVision = "google/gemini-3.8-flash"
+		modelVision = "gemini-3.8-flash"
 	}
 
 	modelSummarizer := os.Getenv("MODEL_SUMMARIZER")
 	if modelSummarizer == "" {
-		modelSummarizer = "deepseek/deepseek-v4-flash-0731"
+		modelSummarizer = "gemini-3.8-flash"
 	}
 
 	modelWhisper := os.Getenv("MODEL_WHISPER")
@@ -116,15 +150,15 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
-	// TTS Configuration (OpenRouter Audio / Speech)
+	// TTS Configuration (Signor AI / OpenRouter Audio / Speech)
 	ttsModel := os.Getenv("TTS_MODEL")
 	if ttsModel == "" {
-		ttsModel = "google/gemini-3.1-flash-tts-preview"
+		ttsModel = signorTTSModel
 	}
 
 	ttsVoice := os.Getenv("TTS_VOICE")
 	if ttsVoice == "" {
-		ttsVoice = "Puck" // High-expressiveness male voice for Nova
+		ttsVoice = "alloy"
 	}
 
 	// Max tokens configuration (default 4096 for long Arabic explanations & conversation)
@@ -148,6 +182,12 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
+		SignorAPIKey:        signorKey,
+		SignorChatBaseURL:   signorChatBase,
+		SignorChatModel:     signorChatModel,
+		SignorGeminiBaseURL: signorGeminiBase,
+		SignorTTSBaseURL:    signorTTSBase,
+		SignorTTSModel:      signorTTSModel,
 		OpenRouterAPIKey:    apiKey,
 		ModelChat:           modelChat,
 		ModelMath:           modelMath,

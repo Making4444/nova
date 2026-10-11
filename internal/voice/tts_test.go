@@ -22,3 +22,18 @@ func TestSynthesizeEmptyText(t *testing.T) {
 		t.Errorf("expected error for empty text, got nil")
 	}
 }
+
+func TestNewTTSClient_SignorAI(t *testing.T) {
+	tts := NewTTSClient("signor-key", "https://api.code.signor.ai/api-2/v1", "gemini-3.8-flash-tts", "alloy")
+	if tts.model != "gemini-3.8-flash-tts" {
+		t.Errorf("expected model gemini-3.8-flash-tts, got %s", tts.model)
+	}
+	if tts.voice != "alloy" {
+		t.Errorf("expected voice alloy, got %s", tts.voice)
+	}
+	expectedURL := "https://api.code.signor.ai/api-2/v1/audio/speech"
+	if gotURL := tts.getSpeechURL(); gotURL != expectedURL {
+		t.Errorf("expected speech URL %s, got %s", expectedURL, gotURL)
+	}
+}
+

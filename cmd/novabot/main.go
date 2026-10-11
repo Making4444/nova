@@ -86,12 +86,15 @@ func performHealthCheck(cfg *config.Config) {
 		fmt.Println("  [⚠️ Groq] لم يتم العثور على GROQ_API_KEY (سيتم استخدام التوجيه المحلي)")
 	}
 
-	// 2. OpenRouter check
-	if cfg.OpenRouterAPIKey != "" {
+	// 2. AI Provider check (Signor AI / OpenRouter)
+	if cfg.SignorAPIKey != "" {
+		fmt.Printf("  [✅ Signor AI] المفتاح متوفر (الدردشة: %s عبر %s | باقي النماذج: %s عبر %s | الصوت TTS: %s عبر %s | أقصى توكنز: %d)\n",
+			cfg.ModelChat, cfg.SignorChatBaseURL, cfg.ModelMath, cfg.SignorGeminiBaseURL, cfg.SignorTTSModel, cfg.SignorTTSBaseURL, cfg.MaxTokens)
+	} else if cfg.OpenRouterAPIKey != "" {
 		fmt.Printf("  [✅ OpenRouter] المفتاح متوفر (الحوار: %s | الرياضيات: %s | المناهج والعلوم: %s | الرؤية: %s | التلخيص: %s | أقصى توكنز: %d)\n",
 			cfg.ModelChat, cfg.ModelMath, cfg.ModelAcademic, cfg.ModelVision, cfg.ModelSummarizer, cfg.MaxTokens)
 	} else {
-		fmt.Println("  [❌ OpenRouter] لم يتم العثور على OPENROUTER_API_KEY في ملف .env!")
+		fmt.Println("  [❌ مزود الذكاء الاصطناعي] لم يتم العثور على SIGNOR_API_KEY أو OPENROUTER_API_KEY في ملف .env!")
 	}
 
 	// 3. FFmpeg check
@@ -190,9 +193,14 @@ func main() {
 		}
 	}
 
+	aiAPIKey := cfg.OpenRouterAPIKey
+	if cfg.SignorAPIKey != "" {
+		aiAPIKey = cfg.SignorAPIKey
+	}
+
 	groqRouter := ai.NewGroqRouter(cfg.GroqAPIKey, cfg.ModelRouterGroq)
 	aiClient := ai.NewMultiModelClient(
-		cfg.OpenRouterAPIKey,
+		aiAPIKey,
 		cfg.ModelChat,
 		cfg.ModelMath,
 		cfg.ModelAcademic,
@@ -201,6 +209,10 @@ func main() {
 		groqRouter,
 		initialPrompt,
 	)
+	if cfg.SignorAPIKey != "" {
+		aiClient.SetAPIBaseURL(cfg.SignorChatBaseURL)
+		aiClient.SetGeminiBaseURL(cfg.SignorGeminiBaseURL)
+	}
 	aiClient.SetMaxTokens(cfg.MaxTokens)
 	if adminState != nil {
 		aiClient.SetThinkingEffort(adminState.GetThinkingEffort())
@@ -239,7 +251,10 @@ func main() {
 		eventHandler.SetGroqSTT(groqSTT)
 	}
 
-	if cfg.OpenRouterAPIKey != "" {
+	if cfg.SignorAPIKey != "" {
+		ttsClient := voice.NewTTSClient(cfg.SignorAPIKey, cfg.SignorTTSBaseURL, cfg.SignorTTSModel, cfg.TTSVoice)
+		eventHandler.SetTTSClient(ttsClient)
+	} else if cfg.OpenRouterAPIKey != "" {
 		ttsClient := voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
 		eventHandler.SetTTSClient(ttsClient)
 	}
@@ -264,8 +279,12 @@ func main() {
 	aiClient.SetScheduler(schedulerEngine)
 	eventHandler.SetSchedulerEngine(schedulerEngine)
 
+	modelDesc := fmt.Sprintf("%s (Chat) + %s (Math) + %s (Vision)", cfg.ModelChat, cfg.ModelMath, cfg.ModelVision)
+	if cfg.SignorAPIKey != "" {
+		modelDesc = fmt.Sprintf("Signor AI: %s (Chat) + %s (TTS)", cfg.SignorChatModel, cfg.SignorTTSModel)
+	}
 	stats := &botStats{
-		modelName: fmt.Sprintf("%s (Chat) + %s (Math) + %s (Vision)", cfg.ModelChat, cfg.ModelMath, cfg.ModelVision),
+		modelName: modelDesc,
 		scheduler: schedulerEngine,
 	}
 	eventHandler.SetStatsProvider(stats)

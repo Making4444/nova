@@ -206,7 +206,14 @@ func TestReplyToNovaMessageIDAndAttentionLeaseLifecycle(t *testing.T) {
 	// Step 1: Explicit wake word in DM triggers Nova and grants 90s attention lease
 	wakeEvt := makeMessageEvent("msg-wake", "201000000002", "201000000002", "Omar", "يا نوفا محتاج مساعدة", false, "", "")
 	h.HandleEvent(wakeEvt)
-	time.Sleep(60 * time.Millisecond)
+	for start := time.Now(); time.Since(start) < 2*time.Second; time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(payloads)
+		mu.Unlock()
+		if n >= 1 {
+			break
+		}
+	}
 
 	mu.Lock()
 	if len(payloads) != 1 {
@@ -220,7 +227,14 @@ func TestReplyToNovaMessageIDAndAttentionLeaseLifecycle(t *testing.T) {
 	// Step 2: Follow-up message without wake word during active 90s lease triggers Nova
 	followUpEvt := makeMessageEvent("msg-followup-1", "201000000002", "201000000002", "Omar", "عندي امتحان فيزياء بكرة", false, "", "")
 	h.HandleEvent(followUpEvt)
-	time.Sleep(60 * time.Millisecond)
+	for start := time.Now(); time.Since(start) < 2*time.Second; time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(payloads)
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+	}
 
 	mu.Lock()
 	if len(payloads) != 2 {
@@ -235,7 +249,14 @@ func TestReplyToNovaMessageIDAndAttentionLeaseLifecycle(t *testing.T) {
 	// Step 3: User switches topic to someone else -> AI returns action="ignore", revoking lease
 	offTopicEvt := makeMessageEvent("msg-offtopic", "201000000002", "201000000002", "Omar", "ثانية واحدة هرد على التليفون", false, "", "")
 	h.HandleEvent(offTopicEvt)
-	time.Sleep(60 * time.Millisecond)
+	for start := time.Now(); time.Since(start) < 2*time.Second; time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(payloads)
+		mu.Unlock()
+		if n >= 3 && !h.attentionGate.HasActiveLease("201000000002", "201000000002", false) {
+			break
+		}
+	}
 
 	mu.Lock()
 	nextAction = "reply"
@@ -244,7 +265,7 @@ func TestReplyToNovaMessageIDAndAttentionLeaseLifecycle(t *testing.T) {
 	// Step 4: Subsequent un-triggered message after lease revocation must be ignored
 	afterRevokeEvt := makeMessageEvent("msg-after-revoke", "201000000002", "201000000002", "Omar", "ألو يا أحمد انت فين", false, "", "")
 	h.HandleEvent(afterRevokeEvt)
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	mu.Lock()
 	if len(payloads) != 3 {
@@ -259,7 +280,14 @@ func TestReplyToNovaMessageIDAndAttentionLeaseLifecycle(t *testing.T) {
 
 	replyNovaEvt := makeMessageEvent("msg-quote-nova", "201000000002", "201000000002", "Omar", "نرجع لموضوع الامتحان بقى", false, "nova-msg-1", "أهلاً بيك، أنا معاك")
 	h.HandleEvent(replyNovaEvt)
-	time.Sleep(60 * time.Millisecond)
+	for start := time.Now(); time.Since(start) < 2*time.Second; time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(payloads)
+		mu.Unlock()
+		if n >= 4 {
+			break
+		}
+	}
 
 	mu.Lock()
 	if len(payloads) != 4 {

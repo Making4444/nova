@@ -206,3 +206,31 @@ func TestThinkingEffort(t *testing.T) {
 	}
 }
 
+func TestAPIBaseURL_SignorAI(t *testing.T) {
+	client := NewOpenRouterClient("fake-key", "gpt-6-luna", "أنت نوفا.")
+	if client.getChatURL() != openRouterAPIURL {
+		t.Errorf("expected default URL %s, got %s", openRouterAPIURL, client.getChatURL())
+	}
+
+	client.SetAPIBaseURL("https://api.code.signor.ai/api-3/v1")
+	client.SetGeminiBaseURL("https://api.code.signor.ai/api-4/v1")
+
+	if client.GetAPIBaseURL() != "https://api.code.signor.ai/api-3/v1" {
+		t.Errorf("expected base URL https://api.code.signor.ai/api-3/v1, got %s", client.GetAPIBaseURL())
+	}
+	if client.GetGeminiBaseURL() != "https://api.code.signor.ai/api-4/v1" {
+		t.Errorf("expected Gemini base URL https://api.code.signor.ai/api-4/v1, got %s", client.GetGeminiBaseURL())
+	}
+
+	expectedChatURL := "https://api.code.signor.ai/api-3/v1/chat/completions"
+	if got := client.getEndpointForModel("gpt-6-luna"); got != expectedChatURL {
+		t.Errorf("expected chat completions endpoint %s, got %s", expectedChatURL, got)
+	}
+
+	expectedGeminiURL := "https://api.code.signor.ai/api-4/v1/chat/completions"
+	if got := client.getEndpointForModel("gemini-3.8-flash"); got != expectedGeminiURL {
+		t.Errorf("expected gemini completions endpoint %s, got %s", expectedGeminiURL, got)
+	}
+}
+
+

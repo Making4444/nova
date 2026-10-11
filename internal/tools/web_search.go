@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // SearchProvider represents any search engine capable of performing web queries (e.g. Perplexity, DuckDuckGo, Bing).
@@ -217,15 +219,16 @@ func (w *WebSearchTool) executeSubQueries(ctx context.Context, subQueries []stri
 	return results
 }
 
-// Fallback search when no external provider is attached.
+// Fallback search when no external provider is attached, scraping DuckDuckGo HTML using goquery.
 func (w *WebSearchTool) fallbackDirectSearch(ctx context.Context, query string) (string, error) {
-	// Simple DuckDuckGo HTML search fallback
 	endpoint := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(query))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "ar,en-US;q=0.9,en;q=0.8")
 
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
@@ -234,19 +237,55 @@ func (w *WebSearchTool) fallbackDirectSearch(ctx context.Context, query string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("search engine status %d", resp.StatusCode)
+		return "", fmt.Errorf("duckduckgo search returned status %d", resp.StatusCode)
 	}
 
-	article, err := ExtractHTMLContent(resp.Body)
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to parse duckduckgo HTML: %w", err)
 	}
 
-	text := article.BodyText
-	if len(text) > 1500 {
-		text = text[:1500] + "..."
+	var results []string
+	count := 0
+
+	doc.Find(".result").Each(func(i int, s *goquery.Selection) {
+		if count >= 5 {
+			return
+		}
+
+		snippet := strings.TrimSpace(s.Find(".result__snippet").Text())
+		if snippet == "" {
+			return
+		}
+
+		title := strings.TrimSpace(s.Find(".result__title").Text())
+		link, _ := s.Find(".result__url").Attr("href")
+		if link == "" {
+			link, _ = s.Find(".result__title a").Attr("href")
+		}
+		link = strings.TrimSpace(link)
+		if strings.HasPrefix(link, "//") {
+			link = "https:" + link
+		}
+		if u, err := url.Parse(link); err == nil {
+			if uddg := u.Query().Get("uddg"); uddg != "" {
+				link = uddg
+			}
+		}
+
+		count++
+		resText := fmt.Sprintf("[%d] %s\nالمقتطف: %s", count, title, snippet)
+		if link != "" {
+			resText += fmt.Sprintf("\nالمصدر: %s", link)
+		}
+		results = append(results, resText)
+	})
+
+	if len(results) == 0 {
+		return "لم يتم العثور على نتائج بحث كافية عبر DuckDuckGo.", nil
 	}
-	return text, nil
+
+	return strings.Join(results, "\n\n"), nil
 }
 
 // High authority domains list for scoring

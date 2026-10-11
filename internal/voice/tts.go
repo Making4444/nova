@@ -19,12 +19,48 @@ const (
 	openRouterSpeechURL = "https://openrouter.ai/api/v1/audio/speech"
 )
 
-// OpenRouterTTS synthesizes speech using OpenRouter Audio Speech or OpenAI Native Audio and converts to WhatsApp PTT OGG Opus.
+// OpenRouterTTS synthesizes speech using OpenRouter Audio Speech or OpenAI/Signor Native Audio and converts to WhatsApp PTT OGG Opus.
 type OpenRouterTTS struct {
 	apiKey     string
+	baseURL    string
 	model      string
 	voice      string
 	httpClient *http.Client
+}
+
+// NewTTSClient creates a new TTS client with configurable baseURL, model, and voice (e.g. for Signor AI).
+func NewTTSClient(apiKey, baseURL, model, voice string) *OpenRouterTTS {
+	if model == "" {
+		model = "gemini-3.8-flash-tts"
+	}
+	if voice == "" {
+		voice = "alloy"
+	}
+	return &OpenRouterTTS{
+		apiKey:  apiKey,
+		baseURL: strings.TrimSpace(baseURL),
+		model:   model,
+		voice:   voice,
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+	}
+}
+
+// SetBaseURL updates the TTS base URL.
+func (t *OpenRouterTTS) SetBaseURL(baseURL string) {
+	t.baseURL = strings.TrimSpace(baseURL)
+}
+
+func (t *OpenRouterTTS) getSpeechURL() string {
+	if strings.TrimSpace(t.baseURL) != "" {
+		base := strings.TrimSpace(t.baseURL)
+		if strings.HasSuffix(base, "/audio/speech") {
+			return base
+		}
+		return strings.TrimSuffix(base, "/") + "/audio/speech"
+	}
+	return openRouterSpeechURL
 }
 
 // NewOpenRouterTTS creates a new OpenRouter TTS client.
@@ -102,18 +138,24 @@ func CleanTextForSpeech(text string) string {
 // It automatically prefers pure TTS (/audio/speech) and falls back to multimodal chat audio if configured.
 func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([]byte, uint32, error) {
 	if t == nil {
-		return nil, 0, fmt.Errorf("openRouter TTS is nil")
+		return nil, 0, fmt.Errorf("TTS client is nil")
 	}
 	cleanText := CleanTextForSpeech(text)
 	if cleanText == "" {
 		return nil, 0, fmt.Errorf("input text cannot be empty")
 	}
 
-	// 1. If configured with a pure TTS model, use the dedicated /api/v1/audio/speech endpoint
-	if t.model != "openai/gpt-audio-mini" {
+	endpoint := t.getSpeechURL()
+	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
+
+	// 1. If configured with a pure TTS model or Signor AI, use the dedicated /audio/speech endpoint
+	if isSignor || t.model != "openai/gpt-audio-mini" {
 		oggBytes, dur, err := t.synthesizePureSpeech(ctx, cleanText)
 		if err == nil && len(oggBytes) > 0 {
 			return oggBytes, dur, nil
+		}
+		if isSignor {
+			return nil, 0, fmt.Errorf("signor speech synthesis failed: %w", err)
 		}
 		fmt.Printf("[⚠️ Pure TTS Warning] /audio/speech failed (%v), trying chat audio fallback...\n", err)
 	}
@@ -123,16 +165,29 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 }
 
 func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText string) ([]byte, uint32, error) {
-	format := "mp3"
-	if strings.Contains(strings.ToLower(t.model), "gemini") {
-		format = "pcm"
-	}
+	endpoint := t.getSpeechURL()
+	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
 
-	reqBody := audioSpeechRequest{
-		Model:          t.model,
-		Input:          cleanText,
-		Voice:          t.voice,
-		ResponseFormat: format,
+	format := "mp3"
+	var reqBody audioSpeechRequest
+
+	if isSignor {
+		// Signor AI follows OpenAI Audio Speech standard without requiring response_format
+		reqBody = audioSpeechRequest{
+			Model: t.model,
+			Input: cleanText,
+			Voice: t.voice,
+		}
+	} else {
+		if strings.Contains(strings.ToLower(t.model), "gemini") {
+			format = "pcm"
+		}
+		reqBody = audioSpeechRequest{
+			Model:          t.model,
+			Input:          cleanText,
+			Voice:          t.voice,
+			ResponseFormat: format,
+		}
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
@@ -140,17 +195,19 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 		return nil, 0, fmt.Errorf("failed to marshal pure speech request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterSpeechURL, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create speech request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+t.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HTTP-Referer", "https://github.com/makari/novabot")
-	req.Header.Set("X-Title", "Nova WhatsApp Bot Voice")
+	if strings.Contains(endpoint, "openrouter.ai") {
+		req.Header.Set("HTTP-Referer", "https://github.com/makari/novabot")
+		req.Header.Set("X-Title", "Nova WhatsApp Bot Voice")
+	}
 
-	fmt.Printf("\n[🎙️ OpenRouter Pure TTS] Synthesizing speech via %s (voice: %s, format: %s) for text (%d chars)...\n", t.model, t.voice, format, len(cleanText))
+	fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len(cleanText))
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("pure speech API request failed: %w", err)
@@ -170,7 +227,7 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 	fmt.Printf("[✅ Pure TTS] Received %d bytes audio, converting to WhatsApp OGG Opus...\n", len(audioBytes))
 	var oggBytes []byte
 	var convErr error
-	if format == "pcm" {
+	if !isSignor && format == "pcm" {
 		oggBytes, convErr = ConvertPCMToOggOpus(ctx, audioBytes)
 	} else {
 		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, audioBytes)

@@ -36,6 +36,8 @@ type UserMemoryUpdater interface {
 // OpenRouterClient interacts with OpenRouter API with multi-model routing (Chat, Math, Academic, Vision) and fast Groq classification.
 type OpenRouterClient struct {
 	apiKey              string
+	apiBaseURL          string
+	geminiBaseURL       string
 	modelChat           string
 	modelMath           string
 	modelAcademic       string
@@ -62,19 +64,19 @@ func NewMultiModelClient(
 	systemPrompt string,
 ) *OpenRouterClient {
 	if modelChat == "" {
-		modelChat = "openai/gpt-5.6-luna"
+		modelChat = "gpt-6-luna"
 	}
 	if modelMath == "" {
-		modelMath = "nvidia/nemotron-3-super-120b-a12b"
+		modelMath = "gemini-3.8-flash"
 	}
 	if modelAcademic == "" {
-		modelAcademic = "google/gemini-3.8-flash"
+		modelAcademic = "gemini-3.8-flash"
 	}
 	if modelVision == "" {
-		modelVision = "google/gemini-3.8-flash"
+		modelVision = "gemini-3.8-flash"
 	}
 	if modelSummarizer == "" {
-		modelSummarizer = "deepseek/deepseek-v4-flash-0731"
+		modelSummarizer = "gemini-3.8-flash"
 	}
 
 	return &OpenRouterClient{
@@ -94,6 +96,64 @@ func NewMultiModelClient(
 			Timeout: 120 * time.Second,
 		},
 	}
+}
+
+// SetAPIBaseURL sets a custom OpenAI-compatible API base URL (e.g. https://api.code.signor.ai/api-4/v1).
+func (c *OpenRouterClient) SetAPIBaseURL(baseURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.apiBaseURL = strings.TrimSpace(baseURL)
+}
+
+// GetAPIBaseURL returns the configured API base URL.
+func (c *OpenRouterClient) GetAPIBaseURL() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.apiBaseURL
+}
+
+// SetGeminiBaseURL sets a custom API base URL specifically for Gemini models (e.g. https://api.code.signor.ai/api-4/v1).
+func (c *OpenRouterClient) SetGeminiBaseURL(baseURL string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.geminiBaseURL = strings.TrimSpace(baseURL)
+}
+
+// GetGeminiBaseURL returns the configured Gemini API base URL.
+func (c *OpenRouterClient) GetGeminiBaseURL() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.geminiBaseURL
+}
+
+func (c *OpenRouterClient) getEndpointForModel(model string) string {
+	c.mu.Lock()
+	baseURL := c.apiBaseURL
+	geminiBase := c.geminiBaseURL
+	c.mu.Unlock()
+
+	// If the model is a Gemini model and a dedicated Gemini base URL is configured
+	if strings.Contains(strings.ToLower(model), "gemini") && strings.TrimSpace(geminiBase) != "" {
+		base := strings.TrimSpace(geminiBase)
+		if strings.HasSuffix(base, "/chat/completions") {
+			return base
+		}
+		return strings.TrimSuffix(base, "/") + "/chat/completions"
+	}
+
+	if strings.TrimSpace(baseURL) != "" {
+		base := strings.TrimSpace(baseURL)
+		if strings.HasSuffix(base, "/chat/completions") {
+			return base
+		}
+		return strings.TrimSuffix(base, "/") + "/chat/completions"
+	}
+
+	return openRouterAPIURL
+}
+
+func (c *OpenRouterClient) getChatURL() string {
+	return c.getEndpointForModel(c.modelChat)
 }
 
 // SetMaxTokens sets the maximum token limit for model completions.
@@ -240,13 +300,13 @@ var webSearchTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
 		Name:        "web_search",
-		Description: "ابحث في الإنترنت لحظياً عن أخبار، أسعار، أحداث، حقائق، مواعيد، أو أي معلومات تحتاجها نوفا قبل الرد",
+		Description: "البحث على الإنترنت لجلب أحدث الأخبار والمعلومات الحية",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"query": map[string]interface{}{
 					"type":        "string",
-					"description": "جملة أو كلمات البحث للبحث عنها في الإنترنت",
+					"description": "كلمة البحث",
 				},
 			},
 			"required": []string{"query"},
@@ -641,7 +701,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		return nil, errors.New("OpenRouterClient is nil")
 	}
 	if c.apiKey == "" {
-		return nil, errors.New("OPENROUTER_API_KEY is not set")
+		return nil, errors.New("API key is not set")
 	}
 	if payload == nil {
 		return nil, errors.New("cannot generate response for nil payload")
@@ -1185,15 +1245,18 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 		return openRouterMessage{}, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterAPIURL, bytes.NewReader(bodyBytes))
+	endpoint := c.getEndpointForModel(model)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return openRouterMessage{}, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("HTTP-Referer", "https://github.com/makari/novabot")
-	req.Header.Set("X-Title", "Nova WhatsApp Bot")
+	if strings.Contains(endpoint, "openrouter.ai") {
+		req.Header.Set("HTTP-Referer", "https://github.com/makari/novabot")
+		req.Header.Set("X-Title", "Nova WhatsApp Bot")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -1207,16 +1270,16 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return openRouterMessage{}, fmt.Errorf("openrouter API error (status %d): %s", resp.StatusCode, string(respBytes))
+		return openRouterMessage{}, fmt.Errorf("AI provider API error (status %d): %s", resp.StatusCode, string(respBytes))
 	}
 
 	var orResp openRouterResponse
 	if err := json.Unmarshal(respBytes, &orResp); err != nil {
-		return openRouterMessage{}, fmt.Errorf("failed to decode openrouter response: %w", err)
+		return openRouterMessage{}, fmt.Errorf("failed to decode AI provider response: %w", err)
 	}
 
 	if orResp.Error != nil {
-		return openRouterMessage{}, fmt.Errorf("openrouter returned error: %s (code: %d)", orResp.Error.Message, orResp.Error.Code)
+		return openRouterMessage{}, fmt.Errorf("AI provider returned error: %s (code: %d)", orResp.Error.Message, orResp.Error.Code)
 	}
 
 	if len(orResp.Choices) == 0 {
@@ -1237,7 +1300,7 @@ func (c *OpenRouterClient) SummarizeChatHistory(ctx context.Context, messagesTex
 		return "", nil, errors.New("OpenRouterClient is nil")
 	}
 	if c.apiKey == "" {
-		return "", nil, errors.New("OPENROUTER_API_KEY is not set")
+		return "", nil, errors.New("API key is not set")
 	}
 
 	// Optimize very large transcripts to prevent timeout while keeping full historical context
