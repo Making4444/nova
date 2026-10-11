@@ -909,7 +909,19 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	for step := 0; step < maxToolSteps; step++ {
 		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
 		if err != nil {
-			return "", usedSearch, err
+			// 1. If call with tools failed (e.g. 500 error from proxy/model not supporting tools), retry without tools
+			if len(tools) > 0 {
+				fmt.Printf("\n[⚠️ Fallback] Call to %s with tools failed (%v). Retrying without tools...\n", model, err)
+				choiceMsg, err = c.callAPI(ctx, model, currentMessages, nil)
+			}
+			// 2. If still failing and model is not gemini-3.8-flash, fallback to gemini-3.8-flash on api-4
+			if err != nil && model != "gemini-3.8-flash" && c.modelAcademic == "gemini-3.8-flash" {
+				fmt.Printf("\n[⚠️ Fallback] Model %s failed (%v). Retrying with gemini-3.8-flash...\n", model, err)
+				choiceMsg, err = c.callAPI(ctx, "gemini-3.8-flash", currentMessages, nil)
+			}
+			if err != nil {
+				return "", usedSearch, err
+			}
 		}
 
 		if len(choiceMsg.ToolCalls) == 0 {
@@ -1219,15 +1231,20 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 	}
 
 	var reasoningObj *openRouterReasoning
-	effort := c.GetThinkingEffort()
-	if effort != "" && effort != "auto" {
-		reasoningObj = &openRouterReasoning{Effort: effort}
-	}
-
 	var freqPenalty, presPenalty float64
-	if model == c.modelChat {
-		freqPenalty = 0.45
-		presPenalty = 0.35
+
+	endpoint := c.getEndpointForModel(model)
+	isOpenRouter := strings.Contains(endpoint, "openrouter.ai")
+
+	if isOpenRouter {
+		effort := c.GetThinkingEffort()
+		if effort != "" && effort != "auto" {
+			reasoningObj = &openRouterReasoning{Effort: effort}
+		}
+		if model == c.modelChat {
+			freqPenalty = 0.45
+			presPenalty = 0.35
+		}
 	}
 
 	reqBody := openRouterRequest{
@@ -1245,7 +1262,6 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 		return openRouterMessage{}, err
 	}
 
-	endpoint := c.getEndpointForModel(model)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return openRouterMessage{}, err
