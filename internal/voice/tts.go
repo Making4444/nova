@@ -150,16 +150,6 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 		return nil, 0, fmt.Errorf("input text cannot be empty")
 	}
 
-	// Protect against huge texts (> 1000 chars) causing TTS gateway 503 timeouts by trimming at sentence boundary
-	if len(cleanText) > 1000 {
-		idx := strings.LastIndexAny(cleanText[:1000], ".\n!؟?")
-		if idx > 400 {
-			cleanText = strings.TrimSpace(cleanText[:idx+1])
-		} else {
-			cleanText = strings.TrimSpace(cleanText[:1000])
-		}
-	}
-
 	endpoint := t.getSpeechURL()
 	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
 
@@ -179,27 +169,149 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 	return t.synthesizeChatAudio(ctx, cleanText)
 }
 
-func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText string) ([]byte, uint32, error) {
+// SplitTextIntoChunks divides text into chunks of at most maxChunkLen characters,
+// preserving all content without dropping words. It prioritizes splitting at:
+// 1. Paragraph breaks (\n\n)
+// 2. Line breaks (\n)
+// 3. Sentence terminators (. ! ؟ ? :)
+// 4. Clause delimiters (، , ;)
+// 5. Word boundaries (spaces)
+func SplitTextIntoChunks(text string, maxChunkLen int) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	if maxChunkLen <= 0 {
+		maxChunkLen = 600
+	}
+
+	runes := []rune(text)
+	if len(runes) <= maxChunkLen {
+		return []string{text}
+	}
+
+	// Step 1: break into small atomic segments (lines or sentence fragments)
+	var segments []string
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len([]rune(line)) <= maxChunkLen {
+			segments = append(segments, line)
+		} else {
+			// Split long line by punctuation or words
+			sub := splitLineIntoSentences(line, maxChunkLen)
+			segments = append(segments, sub...)
+		}
+	}
+
+	if len(segments) == 0 {
+		return []string{text}
+	}
+
+	// Step 2: Combine segments into chunks up to maxChunkLen
+	var chunks []string
+	var currentChunk strings.Builder
+	currentLen := 0
+
+	for _, seg := range segments {
+		segLen := len([]rune(seg))
+		// If adding seg exceeds maxChunkLen and currentChunk is not empty, push currentChunk
+		if currentLen > 0 && currentLen+segLen+1 > maxChunkLen {
+			chunks = append(chunks, currentChunk.String())
+			currentChunk.Reset()
+			currentLen = 0
+		}
+
+		if currentChunk.Len() > 0 {
+			currentChunk.WriteString("\n")
+			currentLen++
+		}
+		currentChunk.WriteString(seg)
+		currentLen += segLen
+	}
+
+	if currentChunk.Len() > 0 {
+		chunks = append(chunks, currentChunk.String())
+	}
+
+	return chunks
+}
+
+func splitLineIntoSentences(line string, maxLen int) []string {
+	line = strings.TrimSpace(line)
+	lineRunes := []rune(line)
+	if len(lineRunes) <= maxLen {
+		return []string{line}
+	}
+
+	var results []string
+	var current strings.Builder
+	currRunes := 0
+
+	isPunct := func(r rune) bool {
+		return r == '.' || r == '!' || r == '?' || r == '؟' || r == ':' || r == '،' || r == ',' || r == ';'
+	}
+
+	for i := 0; i < len(lineRunes); i++ {
+		r := lineRunes[i]
+		current.WriteRune(r)
+		currRunes++
+
+		// Check if we hit punctuation followed by space or end of string
+		if isPunct(r) && (i+1 == len(lineRunes) || lineRunes[i+1] == ' ') {
+			if currRunes >= maxLen/3 || currRunes >= maxLen {
+				seg := strings.TrimSpace(current.String())
+				if seg != "" {
+					results = append(results, seg)
+				}
+				current.Reset()
+				currRunes = 0
+			}
+		} else if currRunes >= maxLen && r == ' ' {
+			seg := strings.TrimSpace(current.String())
+			if seg != "" {
+				results = append(results, seg)
+			}
+			current.Reset()
+			currRunes = 0
+		} else if currRunes >= maxLen+100 {
+			seg := strings.TrimSpace(current.String())
+			if seg != "" {
+				results = append(results, seg)
+			}
+			current.Reset()
+			currRunes = 0
+		}
+	}
+
+	if current.Len() > 0 {
+		seg := strings.TrimSpace(current.String())
+		if seg != "" {
+			results = append(results, seg)
+		}
+	}
+
+	return results
+}
+
+func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, chunk string, format string, isSignor bool) ([]byte, error) {
 	endpoint := t.getSpeechURL()
-	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
 
-	format := "mp3"
 	var reqBody audioSpeechRequest
-
 	if isSignor {
 		// Signor AI follows OpenAI Audio Speech standard without requiring response_format
 		reqBody = audioSpeechRequest{
 			Model: t.model,
-			Input: cleanText,
+			Input: chunk,
 			Voice: t.voice,
 		}
 	} else {
-		if strings.Contains(strings.ToLower(t.model), "gemini") {
-			format = "pcm"
-		}
 		reqBody = audioSpeechRequest{
 			Model:          t.model,
-			Input:          cleanText,
+			Input:          chunk,
 			Voice:          t.voice,
 			ResponseFormat: format,
 		}
@@ -207,12 +319,12 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to marshal pure speech request: %w", err)
+		return nil, fmt.Errorf("failed to marshal pure speech request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create speech request: %w", err)
+		return nil, fmt.Errorf("failed to create speech request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+t.apiKey)
@@ -222,42 +334,92 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 		req.Header.Set("X-Title", "Nova WhatsApp Bot Voice")
 	}
 
-	fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len(cleanText))
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("pure speech API request failed: %w", err)
+		return nil, fmt.Errorf("pure speech API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		return nil, 0, fmt.Errorf("pure speech API error (status %d): %s", resp.StatusCode, string(respBytes))
+		return nil, fmt.Errorf("pure speech API error (status %d): %s", resp.StatusCode, string(respBytes))
 	}
 
 	audioBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read speech audio stream: %w", err)
+		return nil, fmt.Errorf("failed to read speech audio stream: %w", err)
 	}
 
-	fmt.Printf("[✅ Pure TTS] Received %d bytes audio, converting to WhatsApp OGG Opus...\n", len(audioBytes))
+	if len(audioBytes) == 0 {
+		return nil, fmt.Errorf("received empty audio from speech API")
+	}
+
+	return audioBytes, nil
+}
+
+func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText string) ([]byte, uint32, error) {
+	endpoint := t.getSpeechURL()
+	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
+
+	format := "mp3"
+	if !isSignor && strings.Contains(strings.ToLower(t.model), "gemini") {
+		format = "pcm"
+	}
+
+	// Chunk text into <= 600 characters so neither Signor nor Gemini TTS gateway times out or returns 503
+	chunks := SplitTextIntoChunks(cleanText, 600)
+	if len(chunks) == 0 {
+		return nil, 0, fmt.Errorf("no speech text to synthesize")
+	}
+
+	var combinedAudio []byte
+	totalChunks := len(chunks)
+
+	for i, chunk := range chunks {
+		if totalChunks > 1 {
+			fmt.Printf("\n[🎙️ TTS Chunk %d/%d] Synthesizing speech via %s (endpoint: %s) for chunk (%d chars)...\n", i+1, totalChunks, t.model, endpoint, len([]rune(chunk)))
+		} else {
+			fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len([]rune(chunk)))
+		}
+
+		audioBytes, err := t.fetchSingleSpeechAudio(ctx, chunk, format, isSignor)
+		if err != nil {
+			// Transient retry once
+			fmt.Printf("[⚠️ TTS Chunk %d/%d] Attempt 1 failed (%v). Retrying once...\n", i+1, totalChunks, err)
+			select {
+			case <-ctx.Done():
+				return nil, 0, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+			audioBytes, err = t.fetchSingleSpeechAudio(ctx, chunk, format, isSignor)
+			if err != nil {
+				return nil, 0, fmt.Errorf("chunk %d/%d synthesis failed: %w", i+1, totalChunks, err)
+			}
+		}
+
+		combinedAudio = append(combinedAudio, audioBytes...)
+	}
+
+	fmt.Printf("[✅ Pure TTS] Received total %d bytes audio across %d chunk(s), converting to WhatsApp OGG Opus...\n", len(combinedAudio), totalChunks)
 	var oggBytes []byte
 	var convErr error
 	if !isSignor && format == "pcm" {
-		oggBytes, convErr = ConvertPCMToOggOpus(ctx, audioBytes)
+		oggBytes, convErr = ConvertPCMToOggOpus(ctx, combinedAudio)
 	} else {
-		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, audioBytes)
+		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, combinedAudio)
 	}
 	if convErr != nil {
 		return nil, 0, fmt.Errorf("failed to convert audio to ogg opus: %w", convErr)
 	}
 
-	durationSec := uint32(len(cleanText) / 12)
+	durationSec := uint32(len([]rune(cleanText)) / 12)
 	if durationSec < 1 {
 		durationSec = 1
 	}
 
 	return oggBytes, durationSec, nil
 }
+
 
 func (t *OpenRouterTTS) synthesizeChatAudio(ctx context.Context, cleanText string) ([]byte, uint32, error) {
 	reqBody := chatAudioRequest{

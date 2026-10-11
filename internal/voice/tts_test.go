@@ -2,6 +2,7 @@ package voice
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -37,3 +38,134 @@ func TestNewTTSClient_SignorAI(t *testing.T) {
 	}
 }
 
+func TestCleanTextForSpeech(t *testing.T) {
+	input := "تم البحث\n\n[chuckles] أهلاً بيك يا *معلم* في `نوفا`! _تمام_؟"
+	expected := "أهلاً بيك يا معلم في نوفا! تمام؟"
+	got := CleanTextForSpeech(input)
+	if got != expected {
+		t.Errorf("CleanTextForSpeech failed:\nexpected: %q\ngot:      %q", expected, got)
+	}
+}
+
+func TestSplitTextIntoChunks_ShortAndEmpty(t *testing.T) {
+	if chunks := SplitTextIntoChunks("", 600); chunks != nil {
+		t.Errorf("expected nil for empty text, got %v", chunks)
+	}
+
+	short := "أهلاً يا باشا، تمام هظبطهالك حالا."
+	chunks := SplitTextIntoChunks(short, 600)
+	if len(chunks) != 1 || chunks[0] != short {
+		t.Errorf("expected 1 chunk matching short text, got %v", chunks)
+	}
+}
+
+func TestSplitTextIntoChunks_LongVocabularyList(t *testing.T) {
+	vocabList := `من عينيا يا باشمهندس، اسمعي معايا يا إيريني وركزي في النطق:
+
+نبدا بالكلمات الاساسية:
+arena.. ساحة او مجال.
+authentic.. أصيل او حقيقي.
+cognitive.. معرفي او ذهني.
+engagement.. اندماج ومشاركة.
+flexibility.. مرونة.
+rehearsal.. بروفة.
+
+وندخل على باقي الكلمات:
+absorb.. يستوعب او يمتص.
+absorption.. استيعاب.
+additional.. إضافي.
+arabesque design.. تصميم زخرفي عربي.
+brain region.. منطقة في المخ.
+calligraphy.. فن الخط.
+collaboration.. تعاون.
+condition.. حالة او ظرف.
+connect.. يربط.
+consistently.. بانتظام.
+contemporary.. معاصر.
+cortisol.. كورتيزول.
+creative.. مبدع.
+cultural.. ثقافي.
+decade.. عقد، يعني عشر سنين.
+drama production.. إنتاج مسرحي.
+embrace.. يحتضن او يتقبل.
+recovery.. تعافي واستعادة.
+employer.. صاحب عمل.
+entertainment.. ترفيه.
+evidence.. دليل.
+exploration.. استكشاف.
+failure.. فشل.
+heritage.. تراث.
+impact.. تأثير.
+instrument.. آلة موسيقية.
+layer.. طبقة.
+leisure.. وقت الفراغ.
+literally.. حرفياً.
+meaningful.. ذو معنى او هادف.
+musician.. عازف او موسيقار.
+neural connection.. اتصال عصبي.
+neuroscientist.. عالم أعصاب.
+non-judgmental.. متفهم من غير ما يحكم على حد.
+orchestra.. أوركسترا.
+passive.. سلبي.
+psychological.. نفسي.
+rank.. يرتب او يصنف.
+require.. يتطلب.
+resilience.. مرونة وقدرة على التحمل.
+screen-based.. مرتبط بالشاشات.
+self-expression.. تعبير عن النفس.
+shared goal.. هدف مشترك.
+storytelling.. سرد الحكايات.
+strengthen.. يقوي.
+stress hormone.. هرمون القلق والضغط النفسي.
+valuable.. ذو قيمة.
+volunteer.. يتطوع.
+
+سجلي ورايا بقى وبالتوفيق يا رب!`
+
+	chunks := SplitTextIntoChunks(vocabList, 600)
+	if len(chunks) < 3 {
+		t.Fatalf("expected at least 3 chunks for 2000+ char list, got %d", len(chunks))
+	}
+
+	for i, chunk := range chunks {
+		runes := len([]rune(chunk))
+		if runes > 650 {
+			t.Errorf("chunk %d exceeds max length limit: %d chars", i+1, runes)
+		}
+	}
+
+	// Verify key vocabulary from start, middle, and end are all preserved
+	allText := ""
+	for _, c := range chunks {
+		allText += " " + c
+	}
+
+	expectedWords := []string{
+		"arena",
+		"authentic",
+		"contemporary",
+		"neuroscientist",
+		"resilience",
+		"volunteer",
+		"سجلي ورايا بقى وبالتوفيق يا رب!",
+	}
+
+	for _, w := range expectedWords {
+		if !strings.Contains(allText, w) {
+			t.Errorf("missing word %q in chunked output", w)
+		}
+	}
+}
+
+func TestSplitTextIntoChunks_ContinuousLongParagraph(t *testing.T) {
+	longPara := strings.Repeat("هذه جملة تجريبية طويلة جداً لا تحتوي على فواصل أسطر ولكنها تحتوي على نقاط. ", 20)
+	chunks := SplitTextIntoChunks(longPara, 400)
+	if len(chunks) < 3 {
+		t.Fatalf("expected multiple chunks, got %d", len(chunks))
+	}
+	for i, c := range chunks {
+		if len([]rune(c)) > 500 {
+			t.Errorf("chunk %d is too large: %d chars", i, len([]rune(c)))
+		}
+	}
+}

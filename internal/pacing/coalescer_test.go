@@ -97,9 +97,9 @@ func TestTurnCoalescer_MaxWaitUpperBound(t *testing.T) {
 	}
 
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "1", Text: "أول رسالة"}, onFlush)
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "2", Text: "تاني رسالة"}, onFlush)
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 	coalescer.NotifyTyping(chatID, senderID)
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "3", Text: "تالت رسالة"}, onFlush)
 
