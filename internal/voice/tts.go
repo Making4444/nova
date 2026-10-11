@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -117,11 +118,15 @@ type streamChunk struct {
 	} `json:"choices"`
 }
 
-// CleanTextForSpeech removes markdown formatting, emojis, search headers, and symbols for clean spoken voice.
+// CleanTextForSpeech removes markdown formatting, emojis, stage directions in brackets, search headers, and symbols for clean spoken voice.
 func CleanTextForSpeech(text string) string {
 	s := strings.TrimSpace(text)
 	s = strings.TrimPrefix(s, "تم البحث")
 	s = strings.TrimSpace(s)
+
+	// Remove stage directions in brackets like [chuckles], [laughs]
+	bracketRe := regexp.MustCompile(`\[.*?\]`)
+	s = bracketRe.ReplaceAllString(s, "")
 
 	// Remove markdown formatting characters
 	s = strings.ReplaceAll(s, "*", "")
@@ -143,6 +148,16 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 	cleanText := CleanTextForSpeech(text)
 	if cleanText == "" {
 		return nil, 0, fmt.Errorf("input text cannot be empty")
+	}
+
+	// Protect against huge texts (> 1000 chars) causing TTS gateway 503 timeouts by trimming at sentence boundary
+	if len(cleanText) > 1000 {
+		idx := strings.LastIndexAny(cleanText[:1000], ".\n!؟?")
+		if idx > 400 {
+			cleanText = strings.TrimSpace(cleanText[:idx+1])
+		} else {
+			cleanText = strings.TrimSpace(cleanText[:1000])
+		}
 	}
 
 	endpoint := t.getSpeechURL()
