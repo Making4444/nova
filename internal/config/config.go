@@ -48,7 +48,7 @@ func LoadConfig() (*Config, error) {
 
 	signorChatBase := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_BASE_URL"))
 	if signorChatBase == "" {
-		signorChatBase = "https://api.code.signor.ai/api-3/v1"
+		signorChatBase = "https://api.code.signor.ai/v1"
 	}
 
 	signorChatModel := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_MODEL"))

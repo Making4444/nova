@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -118,15 +117,12 @@ type streamChunk struct {
 	} `json:"choices"`
 }
 
-// CleanTextForSpeech removes markdown formatting, emojis, stage directions in brackets, search headers, and symbols for clean spoken voice.
+// CleanTextForSpeech removes markdown formatting, search headers, and symbols for clean spoken voice,
+// while strictly preserving audio expressiveness tags like [laughs], [chuckles], [whispers], [pause], etc.
 func CleanTextForSpeech(text string) string {
 	s := strings.TrimSpace(text)
 	s = strings.TrimPrefix(s, "تم البحث")
 	s = strings.TrimSpace(s)
-
-	// Remove stage directions in brackets like [chuckles], [laughs]
-	bracketRe := regexp.MustCompile(`\[.*?\]`)
-	s = bracketRe.ReplaceAllString(s, "")
 
 	// Remove markdown formatting characters
 	s = strings.ReplaceAll(s, "*", "")
@@ -169,22 +165,46 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 	return t.synthesizeChatAudio(ctx, cleanText)
 }
 
-// SplitTextIntoChunks divides text into chunks of at most maxChunkLen characters,
-// preserving all content without dropping words. It prioritizes splitting at:
-// 1. Paragraph breaks (\n\n)
-// 2. Line breaks (\n)
-// 3. Sentence terminators (. ! ؟ ? :)
-// 4. Clause delimiters (، , ;)
-// 5. Word boundaries (spaces)
+// SplitTextIntoChunks divides text into chunks of at most maxChunkLen characters (default 220),
+// preserving all content without dropping words, respecting explicit delimiters like "||"
+// and natural boundaries (paragraphs, lines, sentence terminators), while keeping audio expression
+// tags ([laughs], [whispers], [pause]) intact without cutting them in the middle.
 func SplitTextIntoChunks(text string, maxChunkLen int) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
 	}
 	if maxChunkLen <= 0 {
-		maxChunkLen = 600
+		maxChunkLen = 220
 	}
 
+	// 1. If text contains explicit delimiter "||", split on it first
+	if strings.Contains(text, "||") {
+		rawParts := strings.Split(text, "||")
+		var result []string
+		for _, part := range rawParts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if len([]rune(part)) <= maxChunkLen {
+				result = append(result, part)
+			} else {
+				// Sub-split this part if it exceeds maxChunkLen
+				sub := splitTextByBoundaries(part, maxChunkLen)
+				result = append(result, sub...)
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
+	}
+
+	return splitTextByBoundaries(text, maxChunkLen)
+}
+
+func splitTextByBoundaries(text string, maxChunkLen int) []string {
+	text = strings.TrimSpace(text)
 	runes := []rune(text)
 	if len(runes) <= maxChunkLen {
 		return []string{text}
@@ -250,6 +270,7 @@ func splitLineIntoSentences(line string, maxLen int) []string {
 	var results []string
 	var current strings.Builder
 	currRunes := 0
+	inBracket := false
 
 	isPunct := func(r rune) bool {
 		return r == '.' || r == '!' || r == '?' || r == '؟' || r == ':' || r == '،' || r == ',' || r == ';'
@@ -257,12 +278,34 @@ func splitLineIntoSentences(line string, maxLen int) []string {
 
 	for i := 0; i < len(lineRunes); i++ {
 		r := lineRunes[i]
+		if r == '[' {
+			inBracket = true
+		} else if r == ']' {
+			inBracket = false
+		}
+
 		current.WriteRune(r)
 		currRunes++
 
-		// Check if we hit punctuation followed by space or end of string
-		if isPunct(r) && (i+1 == len(lineRunes) || lineRunes[i+1] == ' ') {
-			if currRunes >= maxLen/3 || currRunes >= maxLen {
+		if !inBracket {
+			// Check if we hit punctuation followed by space or end of string
+			if isPunct(r) && (i+1 == len(lineRunes) || lineRunes[i+1] == ' ') {
+				if currRunes >= maxLen/3 || currRunes >= maxLen {
+					seg := strings.TrimSpace(current.String())
+					if seg != "" {
+						results = append(results, seg)
+					}
+					current.Reset()
+					currRunes = 0
+				}
+			} else if currRunes >= maxLen && r == ' ' {
+				seg := strings.TrimSpace(current.String())
+				if seg != "" {
+					results = append(results, seg)
+				}
+				current.Reset()
+				currRunes = 0
+			} else if currRunes >= maxLen+80 {
 				seg := strings.TrimSpace(current.String())
 				if seg != "" {
 					results = append(results, seg)
@@ -270,20 +313,6 @@ func splitLineIntoSentences(line string, maxLen int) []string {
 				current.Reset()
 				currRunes = 0
 			}
-		} else if currRunes >= maxLen && r == ' ' {
-			seg := strings.TrimSpace(current.String())
-			if seg != "" {
-				results = append(results, seg)
-			}
-			current.Reset()
-			currRunes = 0
-		} else if currRunes >= maxLen+100 {
-			seg := strings.TrimSpace(current.String())
-			if seg != "" {
-				results = append(results, seg)
-			}
-			current.Reset()
-			currRunes = 0
 		}
 	}
 
@@ -366,8 +395,8 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 		format = "pcm"
 	}
 
-	// Chunk text into <= 600 characters so neither Signor nor Gemini TTS gateway times out or returns 503
-	chunks := SplitTextIntoChunks(cleanText, 600)
+	// Chunk text into <= 220 characters so Signor TTS gateway processes each chunk smoothly without 503 timeouts
+	chunks := SplitTextIntoChunks(cleanText, 220)
 	if len(chunks) == 0 {
 		return nil, 0, fmt.Errorf("no speech text to synthesize")
 	}
@@ -382,19 +411,32 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 			fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len([]rune(chunk)))
 		}
 
-		audioBytes, err := t.fetchSingleSpeechAudio(ctx, chunk, format, isSignor)
-		if err != nil {
-			// Transient retry once
-			fmt.Printf("[⚠️ TTS Chunk %d/%d] Attempt 1 failed (%v). Retrying once...\n", i+1, totalChunks, err)
-			select {
-			case <-ctx.Done():
-				return nil, 0, ctx.Err()
-			case <-time.After(500 * time.Millisecond):
-			}
+		var audioBytes []byte
+		var err error
+
+		// Retry up to 3 times with exponential backoff on transient 503/500
+		for attempt := 1; attempt <= 3; attempt++ {
 			audioBytes, err = t.fetchSingleSpeechAudio(ctx, chunk, format, isSignor)
-			if err != nil {
+			if err == nil && len(audioBytes) > 0 {
+				break
+			}
+			if attempt < 3 {
+				backoff := time.Duration(attempt*500) * time.Millisecond
+				fmt.Printf("[⚠️ TTS Chunk %d/%d] Attempt %d failed (%v). Retrying in %v...\n", i+1, totalChunks, attempt, err, backoff)
+				select {
+				case <-ctx.Done():
+					return nil, 0, ctx.Err()
+				case <-time.After(backoff):
+				}
+			}
+		}
+
+		if err != nil || len(audioBytes) == 0 {
+			if len(combinedAudio) == 0 {
 				return nil, 0, fmt.Errorf("chunk %d/%d synthesis failed: %w", i+1, totalChunks, err)
 			}
+			fmt.Printf("[⚠️ TTS Chunk %d/%d] Failed after 3 attempts (%v), proceeding with available audio...\n", i+1, totalChunks, err)
+			continue
 		}
 
 		combinedAudio = append(combinedAudio, audioBytes...)

@@ -464,13 +464,13 @@ var sendVoiceNoteTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
 		Name:        "send_voice_note",
-		Description: "إرسال الرد كرسالة صوتية (WhatsApp Voice Note) بصوتك البشري الواقعي ونبرتك المصرية الحية، عندما يطلب المستخدم نطق أو سماع كلام ('انطق'، 'قول ده'، 'اقرأ ده'، 'سمعني')، أو عندما تختار الرد بصوتك. يُسمح حصرياً هنا باستخدام وسوم التعبير الصوتي الحية مثل [laughs]، [chuckles]، [sighs]، [whispers]، [gasp]، [pause]",
+		Description: "إرسال الرد كرسالة صوتية (WhatsApp Voice Note) بصوتك البشري الواقعي ونبرتك المصرية الحية، عندما يطلب المستخدم نطق أو سماع كلام ('انطق'، 'قول ده'، 'اقرأ ده'، 'سمعني')، أو عندما تختار الرد بصوتك. يُسمح حصرياً هنا باستخدام وسوم التعبير الصوتي الحية مثل [laughs]، [chuckles]، [sighs]، [whispers]، [gasp]، [pause]. للنصوص الطويلة (أكثر من 30 كلمة)، قسّم المقاطع داخل speech_text بمعرّف '||' بين كل جملتين أو فقرة.",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"speech_text": map[string]interface{}{
 					"type":        "string",
-					"description": "النص الصوتي المراد تسجيله ونطقه بصوتك بالعامية المصرية شاملاً وسوم التعبير الصوتي الطبيعية",
+					"description": "النص الصوتي المراد تسجيله ونطقه بصوتك بالعامية المصرية شاملاً وسوم التعبير الصوتي الطبيعية. للنصوص الطويلة افصل بين المقاطع بمعرّف '||'.",
 				},
 			},
 			"required": []string{"speech_text"},

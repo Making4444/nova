@@ -8,7 +8,7 @@ import (
 func TestLoadConfig_SignorAI(t *testing.T) {
 	// Setup environment variables
 	os.Setenv("SIGNOR_API_KEY", "sk-signor-test-key-123")
-	os.Setenv("SIGNOR_CHAT_BASE_URL", "https://api.code.signor.ai/api-3/v1")
+	os.Setenv("SIGNOR_CHAT_BASE_URL", "https://api.code.signor.ai/v1")
 	os.Setenv("SIGNOR_CHAT_MODEL", "gpt-6-luna")
 	os.Setenv("SIGNOR_GEMINI_BASE_URL", "https://api.code.signor.ai/api-4/v1")
 	os.Setenv("SIGNOR_TTS_BASE_URL", "https://api.code.signor.ai/api-2/v1")
@@ -23,8 +23,8 @@ func TestLoadConfig_SignorAI(t *testing.T) {
 	if cfg.SignorAPIKey != "sk-signor-test-key-123" {
 		t.Errorf("expected SignorAPIKey 'sk-signor-test-key-123', got %q", cfg.SignorAPIKey)
 	}
-	if cfg.SignorChatBaseURL != "https://api.code.signor.ai/api-3/v1" {
-		t.Errorf("expected SignorChatBaseURL 'https://api.code.signor.ai/api-3/v1', got %q", cfg.SignorChatBaseURL)
+	if cfg.SignorChatBaseURL != "https://api.code.signor.ai/v1" {
+		t.Errorf("expected SignorChatBaseURL 'https://api.code.signor.ai/v1', got %q", cfg.SignorChatBaseURL)
 	}
 	if cfg.SignorChatModel != "gpt-6-luna" {
 		t.Errorf("expected SignorChatModel 'gpt-6-luna', got %q", cfg.SignorChatModel)

@@ -212,17 +212,17 @@ func TestAPIBaseURL_SignorAI(t *testing.T) {
 		t.Errorf("expected default URL %s, got %s", openRouterAPIURL, client.getChatURL())
 	}
 
-	client.SetAPIBaseURL("https://api.code.signor.ai/api-3/v1")
+	client.SetAPIBaseURL("https://api.code.signor.ai/v1")
 	client.SetGeminiBaseURL("https://api.code.signor.ai/api-4/v1")
 
-	if client.GetAPIBaseURL() != "https://api.code.signor.ai/api-3/v1" {
-		t.Errorf("expected base URL https://api.code.signor.ai/api-3/v1, got %s", client.GetAPIBaseURL())
+	if client.GetAPIBaseURL() != "https://api.code.signor.ai/v1" {
+		t.Errorf("expected base URL https://api.code.signor.ai/v1, got %s", client.GetAPIBaseURL())
 	}
 	if client.GetGeminiBaseURL() != "https://api.code.signor.ai/api-4/v1" {
 		t.Errorf("expected Gemini base URL https://api.code.signor.ai/api-4/v1, got %s", client.GetGeminiBaseURL())
 	}
 
-	expectedChatURL := "https://api.code.signor.ai/api-3/v1/chat/completions"
+	expectedChatURL := "https://api.code.signor.ai/v1/chat/completions"
 	if got := client.getEndpointForModel("gpt-6-luna"); got != expectedChatURL {
 		t.Errorf("expected chat completions endpoint %s, got %s", expectedChatURL, got)
 	}
