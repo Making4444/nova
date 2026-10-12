@@ -68,7 +68,7 @@ func LoadConfig() (*Config, error) {
 
 	signorTTSModel := strings.TrimSpace(os.Getenv("SIGNOR_TTS_MODEL"))
 	if signorTTSModel == "" {
-		signorTTSModel = "gemini-3.8-flash-tts"
+		signorTTSModel = "gemini-3.1-flash-tts-preview"
 	}
 
 	apiKey := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))

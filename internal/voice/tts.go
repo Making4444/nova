@@ -31,7 +31,7 @@ type OpenRouterTTS struct {
 // NewTTSClient creates a new TTS client with configurable baseURL, model, and voice (e.g. for Signor AI).
 func NewTTSClient(apiKey, baseURL, model, voice string) *OpenRouterTTS {
 	if model == "" {
-		model = "gemini-3.8-flash-tts"
+		model = "gemini-3.1-flash-tts-preview"
 	}
 	if voice == "" {
 		voice = "alloy"
@@ -326,7 +326,7 @@ func splitLineIntoSentences(line string, maxLen int) []string {
 	return results
 }
 
-func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, chunk string, format string, isSignor bool) ([]byte, error) {
+func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, text string, format string, isSignor bool) ([]byte, error) {
 	endpoint := t.getSpeechURL()
 
 	var reqBody audioSpeechRequest
@@ -334,13 +334,13 @@ func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, chunk string
 		// Signor AI follows OpenAI Audio Speech standard without requiring response_format
 		reqBody = audioSpeechRequest{
 			Model: t.model,
-			Input: chunk,
+			Input: text,
 			Voice: t.voice,
 		}
 	} else {
 		reqBody = audioSpeechRequest{
 			Model:          t.model,
-			Input:          chunk,
+			Input:          text,
 			Voice:          t.voice,
 			ResponseFormat: format,
 		}
@@ -371,39 +371,6 @@ func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, chunk string
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		// If Signor AI returns 503 or 500 (service_error), attempt fallback to alternate endpoints like /v1/audio/speech
-		if isSignor && (resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusInternalServerError) {
-			var altEndpoints []string
-			if strings.Contains(endpoint, "api-2") {
-				altEndpoints = append(altEndpoints, strings.Replace(endpoint, "api-2/v1", "v1", 1))
-			} else if !strings.Contains(endpoint, "api-2") {
-				altEndpoints = append(altEndpoints, strings.Replace(endpoint, "/v1", "/api-2/v1", 1))
-			}
-
-			for _, altEndpoint := range altEndpoints {
-				fmt.Printf("[⚠️ TTS Fallback] %s returned status %d. Trying alternate endpoint: %s...\n", endpoint, resp.StatusCode, altEndpoint)
-				altReq, altErr := http.NewRequestWithContext(ctx, http.MethodPost, altEndpoint, bytes.NewReader(bodyBytes))
-				if altErr == nil {
-					altReq.Header.Set("Authorization", "Bearer "+t.apiKey)
-					altReq.Header.Set("Content-Type", "application/json")
-					altResp, altDoErr := t.httpClient.Do(altReq)
-					if altDoErr == nil {
-						defer altResp.Body.Close()
-						if altResp.StatusCode >= 200 && altResp.StatusCode < 300 {
-							altAudio, altReadErr := io.ReadAll(altResp.Body)
-							if altReadErr == nil && len(altAudio) > 0 {
-								fmt.Printf("[✅ TTS Fallback Success] Alternate endpoint %s succeeded! Switching base URL...\n", altEndpoint)
-								t.baseURL = strings.TrimSuffix(altEndpoint, "/audio/speech")
-								return altAudio, nil
-							}
-						} else {
-							altErrBytes, _ := io.ReadAll(altResp.Body)
-							fmt.Printf("[⚠️ TTS Fallback Failed] %s returned status %d: %s\n", altEndpoint, altResp.StatusCode, string(altErrBytes))
-						}
-					}
-				}
-			}
-		}
 		return nil, fmt.Errorf("pure speech API error (status %d): %s", resp.StatusCode, string(respBytes))
 	}
 
@@ -428,60 +395,30 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 		format = "pcm"
 	}
 
-	// Chunk text into <= 220 characters so Signor TTS gateway processes each chunk smoothly without 503 timeouts
-	chunks := SplitTextIntoChunks(cleanText, 220)
-	if len(chunks) == 0 {
-		return nil, 0, fmt.Errorf("no speech text to synthesize")
+	fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len([]rune(cleanText)))
+
+	audioBytes, err := t.fetchSingleSpeechAudio(ctx, cleanText, format, isSignor)
+	if err != nil {
+		// Transient retry once after 1s
+		fmt.Printf("[⚠️ TTS] Attempt 1 failed (%v). Retrying once...\n", err)
+		select {
+		case <-ctx.Done():
+			return nil, 0, ctx.Err()
+		case <-time.After(1 * time.Second):
+		}
+		audioBytes, err = t.fetchSingleSpeechAudio(ctx, cleanText, format, isSignor)
+		if err != nil {
+			return nil, 0, fmt.Errorf("speech synthesis failed: %w", err)
+		}
 	}
 
-	var combinedAudio []byte
-	totalChunks := len(chunks)
-
-	for i, chunk := range chunks {
-		if totalChunks > 1 {
-			fmt.Printf("\n[🎙️ TTS Chunk %d/%d] Synthesizing speech via %s (endpoint: %s) for chunk (%d chars)...\n", i+1, totalChunks, t.model, endpoint, len([]rune(chunk)))
-		} else {
-			fmt.Printf("\n[🎙️ TTS] Synthesizing speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, t.voice, len([]rune(chunk)))
-		}
-
-		var audioBytes []byte
-		var err error
-
-		// Retry up to 3 times with exponential backoff on transient 503/500
-		for attempt := 1; attempt <= 3; attempt++ {
-			audioBytes, err = t.fetchSingleSpeechAudio(ctx, chunk, format, isSignor)
-			if err == nil && len(audioBytes) > 0 {
-				break
-			}
-			if attempt < 3 {
-				backoff := time.Duration(attempt*500) * time.Millisecond
-				fmt.Printf("[⚠️ TTS Chunk %d/%d] Attempt %d failed (%v). Retrying in %v...\n", i+1, totalChunks, attempt, err, backoff)
-				select {
-				case <-ctx.Done():
-					return nil, 0, ctx.Err()
-				case <-time.After(backoff):
-				}
-			}
-		}
-
-		if err != nil || len(audioBytes) == 0 {
-			if len(combinedAudio) == 0 {
-				return nil, 0, fmt.Errorf("chunk %d/%d synthesis failed: %w", i+1, totalChunks, err)
-			}
-			fmt.Printf("[⚠️ TTS Chunk %d/%d] Failed after 3 attempts (%v), proceeding with available audio...\n", i+1, totalChunks, err)
-			continue
-		}
-
-		combinedAudio = append(combinedAudio, audioBytes...)
-	}
-
-	fmt.Printf("[✅ Pure TTS] Received total %d bytes audio across %d chunk(s), converting to WhatsApp OGG Opus...\n", len(combinedAudio), totalChunks)
+	fmt.Printf("[✅ Pure TTS] Received %d bytes audio, converting to WhatsApp OGG Opus...\n", len(audioBytes))
 	var oggBytes []byte
 	var convErr error
 	if !isSignor && format == "pcm" {
-		oggBytes, convErr = ConvertPCMToOggOpus(ctx, combinedAudio)
+		oggBytes, convErr = ConvertPCMToOggOpus(ctx, audioBytes)
 	} else {
-		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, combinedAudio)
+		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, audioBytes)
 	}
 	if convErr != nil {
 		return nil, 0, fmt.Errorf("failed to convert audio to ogg opus: %w", convErr)
@@ -494,7 +431,6 @@ func (t *OpenRouterTTS) synthesizePureSpeech(ctx context.Context, cleanText stri
 
 	return oggBytes, durationSec, nil
 }
-
 
 func (t *OpenRouterTTS) synthesizeChatAudio(ctx context.Context, cleanText string) ([]byte, uint32, error) {
 	reqBody := chatAudioRequest{

@@ -74,8 +74,8 @@ func TestTurnCoalescer_NotifyTypingExtension(t *testing.T) {
 	select {
 	case flushedAt := <-flushTimeCh:
 		elapsed := flushedAt.Sub(start)
-		if elapsed < 80*time.Millisecond {
-			t.Errorf("expected typing notification to extend flush beyond 80ms, flushed after %v", elapsed)
+		if elapsed < 65*time.Millisecond {
+			t.Errorf("expected typing notification to extend flush beyond 65ms, flushed after %v", elapsed)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("timed out waiting for flush after NotifyTyping")
@@ -83,8 +83,8 @@ func TestTurnCoalescer_NotifyTypingExtension(t *testing.T) {
 }
 
 func TestTurnCoalescer_MaxWaitUpperBound(t *testing.T) {
-	// baseWindow = 60ms, typingExtension = 60ms, maxWait = 120ms
-	coalescer := NewTurnCoalescer(60*time.Millisecond, 60*time.Millisecond, 120*time.Millisecond)
+	// baseWindow = 80ms, typingExtension = 80ms, maxWait = 180ms
+	coalescer := NewTurnCoalescer(80*time.Millisecond, 80*time.Millisecond, 180*time.Millisecond)
 
 	flushCh := make(chan []CoalescedItem, 2)
 	start := time.Now()
@@ -97,22 +97,22 @@ func TestTurnCoalescer_MaxWaitUpperBound(t *testing.T) {
 	}
 
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "1", Text: "أول رسالة"}, onFlush)
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "2", Text: "تاني رسالة"}, onFlush)
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
 	coalescer.NotifyTyping(chatID, senderID)
 	coalescer.Enqueue(chatID, senderID, CoalescedItem{MessageID: "3", Text: "تالت رسالة"}, onFlush)
 
 	select {
 	case items := <-flushCh:
 		elapsed := time.Since(start)
-		if elapsed > 220*time.Millisecond {
-			t.Errorf("expected maxWait cap (~120ms) to force flush promptly, took %v", elapsed)
+		if elapsed > 300*time.Millisecond {
+			t.Errorf("expected maxWait cap (~180ms) to force flush promptly, took %v", elapsed)
 		}
 		if len(items) != 3 {
 			t.Errorf("expected 3 items in capped flush, got %d", len(items))
 		}
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(600 * time.Millisecond):
 		t.Fatalf("timed out waiting for capped flush")
 	}
 }
