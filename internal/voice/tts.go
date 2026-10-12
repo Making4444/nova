@@ -371,6 +371,39 @@ func (t *OpenRouterTTS) fetchSingleSpeechAudio(ctx context.Context, chunk string
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBytes, _ := io.ReadAll(resp.Body)
+		// If Signor AI returns 503 or 500 (service_error), attempt fallback to alternate endpoints like /v1/audio/speech
+		if isSignor && (resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusInternalServerError) {
+			var altEndpoints []string
+			if strings.Contains(endpoint, "api-2") {
+				altEndpoints = append(altEndpoints, strings.Replace(endpoint, "api-2/v1", "v1", 1))
+			} else if !strings.Contains(endpoint, "api-2") {
+				altEndpoints = append(altEndpoints, strings.Replace(endpoint, "/v1", "/api-2/v1", 1))
+			}
+
+			for _, altEndpoint := range altEndpoints {
+				fmt.Printf("[⚠️ TTS Fallback] %s returned status %d. Trying alternate endpoint: %s...\n", endpoint, resp.StatusCode, altEndpoint)
+				altReq, altErr := http.NewRequestWithContext(ctx, http.MethodPost, altEndpoint, bytes.NewReader(bodyBytes))
+				if altErr == nil {
+					altReq.Header.Set("Authorization", "Bearer "+t.apiKey)
+					altReq.Header.Set("Content-Type", "application/json")
+					altResp, altDoErr := t.httpClient.Do(altReq)
+					if altDoErr == nil {
+						defer altResp.Body.Close()
+						if altResp.StatusCode >= 200 && altResp.StatusCode < 300 {
+							altAudio, altReadErr := io.ReadAll(altResp.Body)
+							if altReadErr == nil && len(altAudio) > 0 {
+								fmt.Printf("[✅ TTS Fallback Success] Alternate endpoint %s succeeded! Switching base URL...\n", altEndpoint)
+								t.baseURL = strings.TrimSuffix(altEndpoint, "/audio/speech")
+								return altAudio, nil
+							}
+						} else {
+							altErrBytes, _ := io.ReadAll(altResp.Body)
+							fmt.Printf("[⚠️ TTS Fallback Failed] %s returned status %d: %s\n", altEndpoint, altResp.StatusCode, string(altErrBytes))
+						}
+					}
+				}
+			}
+		}
 		return nil, fmt.Errorf("pure speech API error (status %d): %s", resp.StatusCode, string(respBytes))
 	}
 
