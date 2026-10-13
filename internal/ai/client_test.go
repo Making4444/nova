@@ -233,4 +233,48 @@ func TestAPIBaseURL_SignorAI(t *testing.T) {
 	}
 }
 
+func TestInternalToolsModel_Luna(t *testing.T) {
+	if !isInternalToolsModel("gpt-6-luna") {
+		t.Errorf("expected gpt-6-luna to be recognized as internal tools model")
+	}
+	if !isInternalToolsModel("luna") {
+		t.Errorf("expected luna to be recognized as internal tools model")
+	}
+	if isInternalToolsModel("gemini-3.8-flash") {
+		t.Errorf("expected gemini-3.8-flash NOT to be internal tools model")
+	}
+}
+
+func TestParseInternalToolCall(t *testing.T) {
+	// 1. Tag format with key="val"
+	call1 := parseInternalToolCall(`[TOOL:web_search query="سعر الذهب اليوم"]`)
+	if call1 == nil || call1.Name != "web_search" || call1.Args["query"] != "سعر الذهب اليوم" {
+		t.Errorf("failed to parse tag format web_search: %+v", call1)
+	}
+
+	// 2. Tag format with JSON
+	call2 := parseInternalToolCall(`[TOOL:calculator {"expression": "500 * 1.14"}]`)
+	if call2 == nil || call2.Name != "calculator" || call2.Args["expression"] != "500 * 1.14" {
+		t.Errorf("failed to parse JSON tag calculator: %+v", call2)
+	}
+
+	// 3. Tag format voice note
+	call3 := parseInternalToolCall(`[TOOL:send_voice_note speech_text="أهلاً بيك يا قمر [pause]"]`)
+	if call3 == nil || call3.Name != "send_voice_note" || call3.Args["speech_text"] != "أهلاً بيك يا قمر [pause]" {
+		t.Errorf("failed to parse voice note tag: %+v", call3)
+	}
+
+	// 4. JSON action format
+	call4 := parseInternalToolCall(`{"action": "tool_call", "tool_name": "get_weather", "tool_args": {"location": "القاهرة"}}`)
+	if call4 == nil || call4.Name != "get_weather" || call4.Args["location"] != "القاهرة" {
+		t.Errorf("failed to parse JSON action format: %+v", call4)
+	}
+
+	// 5. Normal text with no tools
+	normal := parseInternalToolCall(`صباح الورد يا باشا، يومك زي الفل بإذن الله!`)
+	if normal != nil {
+		t.Errorf("expected nil for normal conversational text, got %+v", normal)
+	}
+}
+
 

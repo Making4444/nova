@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -557,6 +558,292 @@ type openRouterResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// isInternalToolsModel returns true if the model should not receive external API tool definitions,
+// but rather have tools injected into its prompt and parsed internally (specifically gpt-6-luna).
+func isInternalToolsModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(m, "luna") || strings.Contains(m, "gpt-6")
+}
+
+type internalToolCall struct {
+	Name string
+	Args map[string]string
+}
+
+func parseInternalToolCall(text string) *internalToolCall {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil
+	}
+
+	// 1. Check for [TOOL:name ...]
+	tagIdx := strings.Index(trimmed, "[TOOL:")
+	if tagIdx != -1 {
+		endIdx := strings.LastIndex(trimmed[tagIdx:], "]")
+		if endIdx != -1 {
+			fullTag := trimmed[tagIdx+len("[TOOL:") : tagIdx+endIdx]
+			fullTag = strings.TrimSpace(fullTag)
+			parts := strings.SplitN(fullTag, " ", 2)
+			toolName := strings.TrimSpace(parts[0])
+			args := make(map[string]string)
+
+			if len(parts) > 1 {
+				argStr := strings.TrimSpace(parts[1])
+				// Check if args is JSON
+				if strings.HasPrefix(argStr, "{") && strings.HasSuffix(argStr, "}") {
+					var jsonArgs map[string]interface{}
+					if err := json.Unmarshal([]byte(argStr), &jsonArgs); err == nil {
+						for k, v := range jsonArgs {
+							args[k] = fmt.Sprintf("%v", v)
+						}
+					}
+				} else {
+					// Parse key="value" or key='value'
+					re := regexp.MustCompile(`([a-zA-Z0-9_]+)=["']([^"']+)["']`)
+					matches := re.FindAllStringSubmatch(argStr, -1)
+					for _, m := range matches {
+						if len(m) == 3 {
+							args[m[1]] = m[2]
+						}
+					}
+					// If no regex match found, map entire string to primary field
+					if len(args) == 0 && argStr != "" {
+						switch strings.ToLower(toolName) {
+						case "web_search":
+							args["query"] = argStr
+						case "calculator":
+							args["expression"] = argStr
+						case "get_weather", "weather":
+							args["location"] = argStr
+						case "read_web_page", "web_reader":
+							args["url"] = argStr
+						case "solve_math_problem":
+							args["problem"] = argStr
+						case "send_voice_note", "voice_note":
+							args["speech_text"] = argStr
+						default:
+							args["input"] = argStr
+						}
+					}
+				}
+			}
+			return &internalToolCall{
+				Name: toolName,
+				Args: args,
+			}
+		}
+	}
+
+	// 2. Check for JSON object with action == "tool_call" or tool_name
+	jsonStr := ExtractJSON(trimmed)
+	if strings.HasPrefix(jsonStr, "{") && strings.HasSuffix(jsonStr, "}") {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &obj); err == nil {
+			action, _ := obj["action"].(string)
+			toolName, _ := obj["tool_name"].(string)
+			if toolName == "" {
+				toolName, _ = obj["tool"].(string)
+			}
+			if strings.EqualFold(action, "tool_call") || toolName != "" {
+				if toolName != "" {
+					args := make(map[string]string)
+					if rawArgs, ok := obj["tool_args"].(map[string]interface{}); ok {
+						for k, v := range rawArgs {
+							args[k] = fmt.Sprintf("%v", v)
+						}
+					} else if rawArgs, ok := obj["args"].(map[string]interface{}); ok {
+						for k, v := range rawArgs {
+							args[k] = fmt.Sprintf("%v", v)
+						}
+					} else {
+						for k, v := range obj {
+							if k != "action" && k != "tool_name" && k != "tool" {
+								args[k] = fmt.Sprintf("%v", v)
+							}
+						}
+					}
+					return &internalToolCall{
+						Name: toolName,
+						Args: args,
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (c *OpenRouterClient) executeInternalTool(ctx context.Context, call *internalToolCall, payload *trigger.RequestPayload) (string, bool, bool) {
+	switch strings.ToLower(call.Name) {
+	case "web_search":
+		query := call.Args["query"]
+		if query == "" {
+			query = call.Args["q"]
+		}
+		if query == "" {
+			query = call.Args["input"]
+		}
+		fmt.Printf("\n[🔍 Internal Web Search] Query: %q\n", query)
+		searchResult, searchErr := c.searchEngine.Search(ctx, query)
+		if searchErr != nil {
+			searchResult = fmt.Sprintf("فشل البحث على الإنترنت: %v", searchErr)
+		}
+		return searchResult, false, true
+
+	case "get_weather", "weather":
+		loc := call.Args["location"]
+		if loc == "" {
+			loc = call.Args["input"]
+		}
+		fmt.Printf("\n[☀️ Internal Weather Tool] Fetching weather for: %q\n", loc)
+		weatherTool := toolsPkg.NewWeatherTool()
+		b, _ := json.Marshal(map[string]string{"location": loc})
+		res, err := weatherTool.Execute(ctx, b, toolsPkg.ExecutionContext{})
+		if err != nil {
+			res = fmt.Sprintf("تعذر جلب بيانات الطقس: %v", err)
+		}
+		return res, false, false
+
+	case "read_web_page", "web_reader":
+		u := call.Args["url"]
+		if u == "" {
+			u = call.Args["input"]
+		}
+		fmt.Printf("\n[📄 Internal Web Reader] Reading URL: %q\n", u)
+		readerTool := toolsPkg.NewWebReaderTool()
+		b, _ := json.Marshal(map[string]string{"url": u})
+		res, err := readerTool.Execute(ctx, b, toolsPkg.ExecutionContext{})
+		if err != nil {
+			res = fmt.Sprintf("تعذر قراءة الصفحة: %v", err)
+		}
+		return res, false, false
+
+	case "calculator":
+		expr := call.Args["expression"]
+		if expr == "" {
+			expr = call.Args["input"]
+		}
+		fmt.Printf("\n[🧮 Internal Calculator Tool] Evaluating: %q\n", expr)
+		calcTool := toolsPkg.NewCalculatorTool()
+		b, _ := json.Marshal(map[string]string{"expression": expr})
+		res, err := calcTool.Execute(ctx, b, toolsPkg.ExecutionContext{})
+		if err != nil {
+			res = fmt.Sprintf("تعذر حساب التعبير: %v", err)
+		}
+		return res, false, false
+
+	case "solve_math_problem":
+		problem := call.Args["problem"]
+		if problem == "" {
+			problem = call.Args["input"]
+		}
+		fmt.Printf("\n[🧮 Internal Math Consultant] Problem: %q\n", problem)
+		res, err := c.SolveMathDirectly(ctx, problem)
+		if err != nil {
+			res = fmt.Sprintf("فشل حل المسألة: %v", err)
+		}
+		return res, false, false
+
+	case "consult_curriculum_expert", "curriculum_expert":
+		sub := call.Args["subject"]
+		q := call.Args["question"]
+		if q == "" {
+			q = call.Args["input"]
+		}
+		if sub == "" {
+			sub = "مناهج دراسية عامة"
+		}
+		fmt.Printf("\n[🎓 Internal Curriculum Consultant] Subject: %q, Question: %q\n", sub, q)
+		res, err := c.SolveAcademicDirectly(ctx, sub, q)
+		if err != nil {
+			res = fmt.Sprintf("فشل استشارة خبير المناهج: %v", err)
+		}
+		return res, false, false
+
+	case "browse_curriculum_index":
+		grade := call.Args["grade"]
+		sub := call.Args["subject"]
+		kw := call.Args["keyword"]
+		c.mu.Lock()
+		svc := c.curriculumSvc
+		c.mu.Unlock()
+		if svc == nil {
+			svc = curriculum.NewService("data/curriculum", "config/curriculum")
+		}
+		res, err := svc.BrowseIndex(grade, sub, kw)
+		if err != nil {
+			res = fmt.Sprintf("تعذر تصفح الفهرس: %v", err)
+		}
+		return res, false, false
+
+	case "read_curriculum_lesson":
+		grade := call.Args["grade"]
+		sub := call.Args["subject"]
+		fn := call.Args["file_name"]
+		c.mu.Lock()
+		svc := c.curriculumSvc
+		c.mu.Unlock()
+		if svc == nil {
+			svc = curriculum.NewService("data/curriculum", "config/curriculum")
+		}
+		res, err := svc.ReadLesson(grade, sub, fn)
+		if err != nil {
+			res = fmt.Sprintf("تعذر قراءة ملف الدرس: %v", err)
+		}
+		return res, false, false
+
+	case "schedule_followup":
+		dur := call.Args["duration"]
+		reason := call.Args["reason"]
+		target := call.Args["target_user"]
+		if dur == "" {
+			dur = "30m"
+		}
+		toolRes := "تم تسجيل المتابعة المجدولة في السيرفر بنجاح وسيتم تذكيرك بها."
+		c.mu.Lock()
+		sch := c.scheduler
+		c.mu.Unlock()
+		if sch != nil && payload != nil {
+			if target == "" {
+				target = payload.SenderName
+			}
+			taskID := sch.ScheduleTask(payload.ChatID, payload.ChatType, target, reason, dur)
+			toolRes = fmt.Sprintf("تمت جدولة المهمة برقم %s للمتابعة بعد %s", taskID, dur)
+		}
+		return toolRes, false, false
+
+	case "update_user_memory":
+		note := call.Args["note"]
+		if note == "" {
+			note = call.Args["fact"]
+		}
+		c.mu.Lock()
+		updater := c.memoryUpdater
+		c.mu.Unlock()
+		if updater != nil && payload != nil && note != "" {
+			_ = updater.AppendMemoryNote(payload.SenderID, payload.SenderName, note)
+		}
+		return "تم حفظ المعلومة وتحديث ذاكرة المستخدم بنجاح.", false, false
+
+	case "send_voice_note", "voice_note":
+		sp := call.Args["speech_text"]
+		if sp == "" {
+			sp = call.Args["input"]
+		}
+		fmt.Printf("\n[🎙️ Internal Voice Note Tool] AI executed send_voice_note: %q\n", sp)
+		voicePayload := map[string]interface{}{
+			"should_reply":  true,
+			"reply_text":    sp,
+			"send_as_voice": true,
+		}
+		vBytes, _ := json.Marshal(voicePayload)
+		return string(vBytes), true, false
+	}
+
+	return fmt.Sprintf("أداة غير معروفة: %s", call.Name), false, false
+}
+
 // buildSystemPrompt enriches Nova's core persona prompt with live WhatsApp context, current time in Cairo,
 // group metadata, user memory, and emotional state in clean markdown instead of machine JSON.
 func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) string {
@@ -619,6 +906,19 @@ func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) st
 		sb.WriteString("- إذا كان المستخدم يكمل حواره أو سؤاله معك بشكل طبيعي، رد عليه بتلقائية.\n")
 		sb.WriteString("- إذا أرسل المستخدم رداً ختامياً قصيراً لا يستدعي كلاماً جديداً (مثل: \"تمام\"، \"شكراً\"، \"ماشي\"، \"👍\"، \"ههه\")، اكتفِ بعمل ريأكشن فقط عبر إخراج `[REACT:❤️]` أو `[REACT:😂]` (أو JSON يحتوي على `\"action\": \"react_only\"` مع `\"reaction_emoji\"`).\n")
 		sb.WriteString("- إذا كان واضحاً أن المستخدم انتقل للحديث مع شخص آخر في الشات ولا يوجه الكلام لك، أخرج `[IGNORE]` فقط (أو `\"should_reply\": false, \"action\": \"ignore\"`).\n")
+	}
+
+	if isInternalToolsModel(c.modelChat) {
+		sb.WriteString("\n### [نظام الأدوات الداخلي الخاص بك (Internal Tools System)]:\n")
+		sb.WriteString("أنت مدعوم داخلياً بمحرك أدوات فوري بدون واجهات برمجة خارجية. إذا احتجت لجلب معلومات حية أو إجراء حسابات أو إرسال فويس قبل أن تجيب، أخرج استدعاء الأداة في بداية ردك أو في سطر منفصل بصيغة:\n")
+		sb.WriteString("- للبحث في الإنترنت: `[TOOL:web_search query=\"كلمات البحث\"]`\n")
+		sb.WriteString("- للعمليات الحسابية: `[TOOL:calculator expression=\"التعبير الحسابي\"]`\n")
+		sb.WriteString("- لحالة الطقس: `[TOOL:get_weather location=\"اسم المدينة\"]`\n")
+		sb.WriteString("- لقراءة صفحة ويب: `[TOOL:read_web_page url=\"رابط الصفحة\"]`\n")
+		sb.WriteString("- لحل مسألة رياضية/برمجية متقدمة: `[TOOL:solve_math_problem problem=\"نص المسألة\"]`\n")
+		sb.WriteString("- للمناهج الدراسية المصرية 2026: `[TOOL:browse_curriculum_index grade=\"الصف\" subject=\"المادة\" keyword=\"الكلمة\"]` أو `[TOOL:read_curriculum_lesson grade=\"الصف\" subject=\"المادة\" file_name=\"الملف\"]`\n")
+		sb.WriteString("- لتسجيل فويس ونطق رد صوتي: `[TOOL:send_voice_note speech_text=\"النص الصوتي المراد نطقه\"]` (أو وضع `\"send_as_voice\": true` في الـ JSON).\n")
+		sb.WriteString("- في المحادثات العادية، الهزار، الدردشة، والأسئلة العامة التي لا تتطلب أدوات: أجب مباشرة وبشكل فوري وطبيعي بدون استدعاء أي أداة!\n")
 	}
 
 	return sb.String()
@@ -904,13 +1204,18 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	copy(currentMessages, messages)
 	usedSearch := false
 
-	tools := []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool, browseCurriculumIndexTool, readCurriculumLessonTool}
+	isInternal := isInternalToolsModel(model)
+
+	var apiTools []toolDefinition
+	if !isInternal {
+		apiTools = []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool, browseCurriculumIndexTool, readCurriculumLessonTool}
+	}
 
 	for step := 0; step < maxToolSteps; step++ {
-		choiceMsg, err := c.callAPI(ctx, model, currentMessages, tools)
+		choiceMsg, err := c.callAPI(ctx, model, currentMessages, apiTools)
 		if err != nil {
 			// 1. If call with tools failed (e.g. 500 error from proxy/model not supporting tools), retry without tools
-			if len(tools) > 0 {
+			if len(apiTools) > 0 {
 				fmt.Printf("\n[⚠️ Fallback] Call to %s with tools failed (%v). Retrying without tools...\n", model, err)
 				choiceMsg, err = c.callAPI(ctx, model, currentMessages, nil)
 			}
@@ -922,6 +1227,33 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 			if err != nil {
 				return "", usedSearch, err
 			}
+		}
+
+		// Handle internal tools model (e.g. gpt-6-luna):
+		if isInternal {
+			contentStr, ok := choiceMsg.Content.(string)
+			if !ok {
+				return "", usedSearch, fmt.Errorf("unexpected content format from internal tools model")
+			}
+			internalCall := parseInternalToolCall(contentStr)
+			if internalCall != nil {
+				toolRes, isVoice, usedSearchFlag := c.executeInternalTool(ctx, internalCall, payload)
+				if isVoice {
+					return toolRes, usedSearch, nil
+				}
+				if usedSearchFlag {
+					usedSearch = true
+				}
+				currentMessages = append(currentMessages, choiceMsg)
+				currentMessages = append(currentMessages, openRouterMessage{
+					Role: "user",
+					Content: fmt.Sprintf("[نتيجة أداة %s]:\n%s\n\nأكمل الآن ردك النهائي للمستخدم بالعامية المصرية بناءً على هذه النتيجة وبدون استدعاء أي أدوات إضافية.", internalCall.Name, toolRes),
+				})
+				continue
+			}
+
+			// Direct response from gpt-6-luna without tools!
+			return strings.TrimSpace(contentStr), usedSearch, nil
 		}
 
 		if len(choiceMsg.ToolCalls) == 0 {

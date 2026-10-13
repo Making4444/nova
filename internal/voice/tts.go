@@ -31,10 +31,10 @@ type OpenRouterTTS struct {
 // NewTTSClient creates a new TTS client with configurable baseURL, model, and voice (e.g. for Signor AI).
 func NewTTSClient(apiKey, baseURL, model, voice string) *OpenRouterTTS {
 	if model == "" {
-		model = "gemini-3.1-flash-tts-preview"
+		model = "gemini-3.8-flash-tts"
 	}
 	if voice == "" {
-		voice = "alloy"
+		voice = "Kore"
 	}
 	return &OpenRouterTTS{
 		apiKey:  apiKey,
@@ -106,6 +106,218 @@ type audioSpeechRequest struct {
 	ResponseFormat string `json:"response_format,omitempty"`
 }
 
+// Google Gemini Native Audio REST API request and response structures
+type geminiVoiceConfig struct {
+	VoiceName string `json:"voiceName"`
+}
+
+type geminiPrebuiltVoiceConfig struct {
+	PrebuiltVoiceConfig geminiVoiceConfig `json:"prebuiltVoiceConfig"`
+}
+
+type geminiSpeechConfig struct {
+	VoiceConfig geminiPrebuiltVoiceConfig `json:"voiceConfig"`
+}
+
+type geminiGenerationConfig struct {
+	ResponseModalities []string           `json:"responseModalities"`
+	SpeechConfig       geminiSpeechConfig `json:"speechConfig"`
+}
+
+type geminiContentPart struct {
+	Text string `json:"text"`
+}
+
+type geminiContent struct {
+	Parts []geminiContentPart `json:"parts"`
+}
+
+type geminiAudioRequest struct {
+	Contents         []geminiContent        `json:"contents"`
+	GenerationConfig geminiGenerationConfig `json:"generationConfig"`
+}
+
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
+type geminiResponsePart struct {
+	Text       string            `json:"text,omitempty"`
+	InlineData *geminiInlineData `json:"inlineData,omitempty"`
+}
+
+type geminiCandidateContent struct {
+	Parts []geminiResponsePart `json:"parts"`
+}
+
+type geminiCandidate struct {
+	Content geminiCandidateContent `json:"content"`
+}
+
+type geminiAudioResponse struct {
+	Candidates []geminiCandidate `json:"candidates"`
+	Error      *struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+		Status  string `json:"status"`
+	} `json:"error,omitempty"`
+}
+
+func (t *OpenRouterTTS) getGeminiGenerateContentURL() string {
+	base := strings.TrimSpace(t.baseURL)
+	if base == "" {
+		base = "https://api.code.signor.ai/api-2"
+	}
+	if strings.Contains(base, ":generateContent") {
+		return base
+	}
+	base = strings.TrimSuffix(base, "/v1")
+	base = strings.TrimSuffix(base, "/v1beta")
+	base = strings.TrimSuffix(base, "/audio/speech")
+	base = strings.TrimSuffix(base, "/")
+
+	model := t.model
+	if model == "" {
+		model = "gemini-3.8-flash-tts"
+	}
+	return fmt.Sprintf("%s/v1beta/models/%s:generateContent", base, model)
+}
+
+func getGeminiVoiceName(configuredVoice string) string {
+	v := strings.TrimSpace(configuredVoice)
+	switch strings.ToLower(v) {
+	case "puck":
+		return "Puck"
+	case "charon":
+		return "Charon"
+	case "fenrir":
+		return "Fenrir"
+	case "aoede":
+		return "Aoede"
+	case "kore":
+		return "Kore"
+	default:
+		// Default to Kore as sent in Signor's official curl
+		return "Kore"
+	}
+}
+
+func (t *OpenRouterTTS) fetchGeminiNativeSpeechAudio(ctx context.Context, cleanText string) ([]byte, uint32, error) {
+	endpoint := t.getGeminiGenerateContentURL()
+	voiceName := getGeminiVoiceName(t.voice)
+
+	reqBody := geminiAudioRequest{
+		Contents: []geminiContent{
+			{
+				Parts: []geminiContentPart{
+					{Text: cleanText},
+				},
+			},
+		},
+		GenerationConfig: geminiGenerationConfig{
+			ResponseModalities: []string{"AUDIO"},
+			SpeechConfig: geminiSpeechConfig{
+				VoiceConfig: geminiPrebuiltVoiceConfig{
+					PrebuiltVoiceConfig: geminiVoiceConfig{
+						VoiceName: voiceName,
+					},
+				},
+			},
+		},
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to marshal Gemini audio request: %w", err)
+	}
+
+	fmt.Printf("\n[🎙️ Gemini TTS] Generating speech via %s (endpoint: %s, voice: %s) for text (%d chars)...\n", t.model, endpoint, voiceName, len([]rune(cleanText)))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to create Gemini audio request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+t.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("Gemini audio request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read Gemini audio response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, 0, fmt.Errorf("Gemini audio API error (status %d): %s", resp.StatusCode, string(respBytes))
+	}
+
+	var gemResp geminiAudioResponse
+	if err := json.Unmarshal(respBytes, &gemResp); err != nil {
+		return nil, 0, fmt.Errorf("failed to decode Gemini audio JSON (%w): %s", err, string(respBytes))
+	}
+
+	if gemResp.Error != nil {
+		return nil, 0, fmt.Errorf("Gemini audio error: %s (code %d, status %s)", gemResp.Error.Message, gemResp.Error.Code, gemResp.Error.Status)
+	}
+
+	var audioBase64 string
+	var mimeType string
+	for _, cand := range gemResp.Candidates {
+		for _, part := range cand.Content.Parts {
+			if part.InlineData != nil && part.InlineData.Data != "" {
+				audioBase64 = part.InlineData.Data
+				mimeType = part.InlineData.MimeType
+				break
+			}
+		}
+		if audioBase64 != "" {
+			break
+		}
+	}
+
+	if audioBase64 == "" {
+		return nil, 0, fmt.Errorf("no inlineData audio received in Gemini response: %s", string(respBytes))
+	}
+
+	audioBytes, err := base64.StdEncoding.DecodeString(audioBase64)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to decode Gemini audio base64: %w", err)
+	}
+
+	fmt.Printf("[✅ Gemini TTS] Received %d bytes audio (format: %s), converting to WhatsApp OGG Opus...\n", len(audioBytes), mimeType)
+
+	var oggBytes []byte
+	var convErr error
+	if strings.Contains(mimeType, "pcm") || strings.Contains(mimeType, "rate=24000") {
+		oggBytes, convErr = ConvertPCMToOggOpus(ctx, audioBytes)
+	} else {
+		oggBytes, convErr = ConvertAnyAudioToOggOpus(ctx, audioBytes)
+		if convErr != nil {
+			// Fallback: try raw PCM conversion if container parser fails
+			oggBytes, convErr = ConvertPCMToOggOpus(ctx, audioBytes)
+		}
+	}
+	if convErr != nil {
+		return nil, 0, fmt.Errorf("failed to convert Gemini audio to WhatsApp OGG Opus: %w", convErr)
+	}
+
+	durationSec := uint32(len(audioBytes) / 48000)
+	if durationSec < 1 {
+		durationSec = uint32(len([]rune(cleanText)) / 12)
+		if durationSec < 1 {
+			durationSec = 1
+		}
+	}
+
+	return oggBytes, durationSec, nil
+}
+
 type streamChunk struct {
 	Choices []struct {
 		Delta struct {
@@ -136,7 +348,7 @@ func CleanTextForSpeech(text string) string {
 }
 
 // SynthesizeToOggOpus generates speech from text and converts it to WhatsApp OGG Opus format.
-// It automatically prefers pure TTS (/audio/speech) and falls back to multimodal chat audio if configured.
+// It automatically prefers Gemini Native Audio / pure TTS and falls back to multimodal chat audio if configured.
 func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([]byte, uint32, error) {
 	if t == nil {
 		return nil, 0, fmt.Errorf("TTS client is nil")
@@ -148,20 +360,36 @@ func (t *OpenRouterTTS) SynthesizeToOggOpus(ctx context.Context, text string) ([
 
 	endpoint := t.getSpeechURL()
 	isSignor := strings.Contains(endpoint, "signor") || (t.baseURL != "" && !strings.Contains(endpoint, "openrouter.ai"))
+	isGeminiModel := strings.Contains(strings.ToLower(t.model), "gemini")
 
-	// 1. If configured with a pure TTS model or Signor AI, use the dedicated /audio/speech endpoint
-	if isSignor || t.model != "openai/gpt-audio-mini" {
-		oggBytes, dur, err := t.synthesizePureSpeech(ctx, cleanText)
+	// 1. If configured with Signor AI or a Gemini model, prioritize Google Gemini Native Audio REST API (:generateContent)
+	if isSignor || isGeminiModel {
+		oggBytes, dur, err := t.fetchGeminiNativeSpeechAudio(ctx, cleanText)
 		if err == nil && len(oggBytes) > 0 {
 			return oggBytes, dur, nil
 		}
 		if isSignor {
+			// Fallback to /audio/speech if generateContent returned an error
+			fmt.Printf("[⚠️ Gemini Native TTS Warning] generateContent failed (%v), trying /audio/speech fallback...\n", err)
+			pureBytes, pureDur, pureErr := t.synthesizePureSpeech(ctx, cleanText)
+			if pureErr == nil && len(pureBytes) > 0 {
+				return pureBytes, pureDur, nil
+			}
 			return nil, 0, fmt.Errorf("signor speech synthesis failed: %w", err)
+		}
+		fmt.Printf("[⚠️ Gemini Native TTS Warning] generateContent failed (%v), trying chat audio fallback...\n", err)
+	}
+
+	// 2. Pure TTS (/audio/speech)
+	if t.model != "openai/gpt-audio-mini" {
+		oggBytes, dur, err := t.synthesizePureSpeech(ctx, cleanText)
+		if err == nil && len(oggBytes) > 0 {
+			return oggBytes, dur, nil
 		}
 		fmt.Printf("[⚠️ Pure TTS Warning] /audio/speech failed (%v), trying chat audio fallback...\n", err)
 	}
 
-	// 2. Fallback to multimodal chat completions audio
+	// 3. Fallback to multimodal chat completions audio
 	return t.synthesizeChatAudio(ctx, cleanText)
 }
 

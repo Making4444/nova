@@ -25,16 +25,32 @@ func TestSynthesizeEmptyText(t *testing.T) {
 }
 
 func TestNewTTSClient_SignorAI(t *testing.T) {
-	tts := NewTTSClient("signor-key", "https://api.code.signor.ai/api-2/v1", "gemini-3.1-flash-tts-preview", "alloy")
-	if tts.model != "gemini-3.1-flash-tts-preview" {
-		t.Errorf("expected model gemini-3.1-flash-tts-preview, got %s", tts.model)
+	tts := NewTTSClient("signor-key", "https://api.code.signor.ai/api-2/v1", "gemini-3.8-flash-tts", "Kore")
+	if tts.model != "gemini-3.8-flash-tts" {
+		t.Errorf("expected model gemini-3.8-flash-tts, got %s", tts.model)
 	}
-	if tts.voice != "alloy" {
-		t.Errorf("expected voice alloy, got %s", tts.voice)
+	if tts.voice != "Kore" {
+		t.Errorf("expected voice Kore, got %s", tts.voice)
 	}
-	expectedURL := "https://api.code.signor.ai/api-2/v1/audio/speech"
-	if gotURL := tts.getSpeechURL(); gotURL != expectedURL {
-		t.Errorf("expected speech URL %s, got %s", expectedURL, gotURL)
+	expectedSpeechURL := "https://api.code.signor.ai/api-2/v1/audio/speech"
+	if gotURL := tts.getSpeechURL(); gotURL != expectedSpeechURL {
+		t.Errorf("expected speech URL %s, got %s", expectedSpeechURL, gotURL)
+	}
+	expectedGeminiURL := "https://api.code.signor.ai/api-2/v1beta/models/gemini-3.8-flash-tts:generateContent"
+	if gotGemURL := tts.getGeminiGenerateContentURL(); gotGemURL != expectedGeminiURL {
+		t.Errorf("expected Gemini URL %s, got %s", expectedGeminiURL, gotGemURL)
+	}
+}
+
+func TestGeminiVoiceMapping(t *testing.T) {
+	if v := getGeminiVoiceName("alloy"); v != "Kore" {
+		t.Errorf("expected alloy to map to Kore, got %s", v)
+	}
+	if v := getGeminiVoiceName("Puck"); v != "Puck" {
+		t.Errorf("expected Puck to remain Puck, got %s", v)
+	}
+	if v := getGeminiVoiceName("charon"); v != "Charon" {
+		t.Errorf("expected charon to map to Charon, got %s", v)
 	}
 }
 
