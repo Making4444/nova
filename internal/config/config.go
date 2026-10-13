@@ -48,12 +48,12 @@ func LoadConfig() (*Config, error) {
 
 	signorChatBase := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_BASE_URL"))
 	if signorChatBase == "" {
-		signorChatBase = "https://api.code.signor.ai/v1"
+		signorChatBase = "https://api.code.signor.ai/api-4/v1"
 	}
 
 	signorChatModel := strings.TrimSpace(os.Getenv("SIGNOR_CHAT_MODEL"))
 	if signorChatModel == "" {
-		signorChatModel = "gpt-6-luna"
+		signorChatModel = "gemini-3.8-flash"
 	}
 
 	signorGeminiBase := strings.TrimSpace(os.Getenv("SIGNOR_GEMINI_BASE_URL"))
@@ -158,11 +158,7 @@ func LoadConfig() (*Config, error) {
 
 	ttsVoice := os.Getenv("TTS_VOICE")
 	if ttsVoice == "" {
-		if signorKey != "" {
-			ttsVoice = "Kore"
-		} else {
-			ttsVoice = "alloy"
-		}
+		ttsVoice = "Puck"
 	}
 
 	// Max tokens configuration (default 4096 for long Arabic explanations & conversation)

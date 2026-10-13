@@ -8,8 +8,8 @@ import (
 func TestLoadConfig_SignorAI(t *testing.T) {
 	// Setup environment variables
 	os.Setenv("SIGNOR_API_KEY", "sk-signor-test-key-123")
-	os.Setenv("SIGNOR_CHAT_BASE_URL", "https://api.code.signor.ai/v1")
-	os.Setenv("SIGNOR_CHAT_MODEL", "gpt-6-luna")
+	os.Setenv("SIGNOR_CHAT_BASE_URL", "https://api.code.signor.ai/api-4/v1")
+	os.Setenv("SIGNOR_CHAT_MODEL", "gemini-3.8-flash")
 	os.Setenv("SIGNOR_GEMINI_BASE_URL", "https://api.code.signor.ai/api-4/v1")
 	os.Setenv("SIGNOR_TTS_BASE_URL", "https://api.code.signor.ai/api-2/v1")
 	os.Setenv("SIGNOR_TTS_MODEL", "gemini-3.8-flash-tts")
@@ -23,11 +23,11 @@ func TestLoadConfig_SignorAI(t *testing.T) {
 	if cfg.SignorAPIKey != "sk-signor-test-key-123" {
 		t.Errorf("expected SignorAPIKey 'sk-signor-test-key-123', got %q", cfg.SignorAPIKey)
 	}
-	if cfg.SignorChatBaseURL != "https://api.code.signor.ai/v1" {
-		t.Errorf("expected SignorChatBaseURL 'https://api.code.signor.ai/v1', got %q", cfg.SignorChatBaseURL)
+	if cfg.SignorChatBaseURL != "https://api.code.signor.ai/api-4/v1" {
+		t.Errorf("expected SignorChatBaseURL 'https://api.code.signor.ai/api-4/v1', got %q", cfg.SignorChatBaseURL)
 	}
-	if cfg.SignorChatModel != "gpt-6-luna" {
-		t.Errorf("expected SignorChatModel 'gpt-6-luna', got %q", cfg.SignorChatModel)
+	if cfg.SignorChatModel != "gemini-3.8-flash" {
+		t.Errorf("expected SignorChatModel 'gemini-3.8-flash', got %q", cfg.SignorChatModel)
 	}
 	if cfg.SignorGeminiBaseURL != "https://api.code.signor.ai/api-4/v1" {
 		t.Errorf("expected SignorGeminiBaseURL 'https://api.code.signor.ai/api-4/v1', got %q", cfg.SignorGeminiBaseURL)
@@ -38,8 +38,8 @@ func TestLoadConfig_SignorAI(t *testing.T) {
 	if cfg.SignorTTSModel != "gemini-3.8-flash-tts" {
 		t.Errorf("expected SignorTTSModel 'gemini-3.8-flash-tts', got %q", cfg.SignorTTSModel)
 	}
-	if cfg.ModelChat != "gpt-6-luna" {
-		t.Errorf("expected ModelChat 'gpt-6-luna', got %q", cfg.ModelChat)
+	if cfg.ModelChat != "gemini-3.8-flash" {
+		t.Errorf("expected ModelChat 'gemini-3.8-flash', got %q", cfg.ModelChat)
 	}
 	if cfg.ModelMath != "gemini-3.8-flash" {
 		t.Errorf("expected ModelMath 'gemini-3.8-flash', got %q", cfg.ModelMath)
@@ -47,7 +47,7 @@ func TestLoadConfig_SignorAI(t *testing.T) {
 	if cfg.TTSModel != "gemini-3.8-flash-tts" {
 		t.Errorf("expected TTSModel to default to 'gemini-3.8-flash-tts', got %q", cfg.TTSModel)
 	}
-	if cfg.TTSVoice != "Kore" {
-		t.Errorf("expected TTSVoice to default to 'Kore' when Signor is configured, got %q", cfg.TTSVoice)
+	if cfg.TTSVoice != "Puck" {
+		t.Errorf("expected TTSVoice to default to 'Puck' when Signor is configured, got %q", cfg.TTSVoice)
 	}
 }

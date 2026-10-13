@@ -65,7 +65,7 @@ func NewMultiModelClient(
 	systemPrompt string,
 ) *OpenRouterClient {
 	if modelChat == "" {
-		modelChat = "gpt-6-luna"
+		modelChat = "gemini-3.8-flash"
 	}
 	if modelMath == "" {
 		modelMath = "gemini-3.8-flash"

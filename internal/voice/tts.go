@@ -34,7 +34,7 @@ func NewTTSClient(apiKey, baseURL, model, voice string) *OpenRouterTTS {
 		model = "gemini-3.8-flash-tts"
 	}
 	if voice == "" {
-		voice = "Kore"
+		voice = "Puck"
 	}
 	return &OpenRouterTTS{
 		apiKey:  apiKey,
@@ -187,19 +187,19 @@ func (t *OpenRouterTTS) getGeminiGenerateContentURL() string {
 func getGeminiVoiceName(configuredVoice string) string {
 	v := strings.TrimSpace(configuredVoice)
 	switch strings.ToLower(v) {
-	case "puck":
+	case "alloy", "puck":
 		return "Puck"
-	case "charon":
+	case "charon", "echo", "onyx":
 		return "Charon"
 	case "fenrir":
 		return "Fenrir"
-	case "aoede":
+	case "aoede", "shimmer":
 		return "Aoede"
-	case "kore":
+	case "kore", "nova":
 		return "Kore"
 	default:
-		// Default to Kore as sent in Signor's official curl
-		return "Kore"
+		// Default to Puck (expressive male voice for Nova)
+		return "Puck"
 	}
 }
 

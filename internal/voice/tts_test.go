@@ -25,12 +25,12 @@ func TestSynthesizeEmptyText(t *testing.T) {
 }
 
 func TestNewTTSClient_SignorAI(t *testing.T) {
-	tts := NewTTSClient("signor-key", "https://api.code.signor.ai/api-2/v1", "gemini-3.8-flash-tts", "Kore")
+	tts := NewTTSClient("signor-key", "https://api.code.signor.ai/api-2/v1", "gemini-3.8-flash-tts", "Puck")
 	if tts.model != "gemini-3.8-flash-tts" {
 		t.Errorf("expected model gemini-3.8-flash-tts, got %s", tts.model)
 	}
-	if tts.voice != "Kore" {
-		t.Errorf("expected voice Kore, got %s", tts.voice)
+	if tts.voice != "Puck" {
+		t.Errorf("expected voice Puck, got %s", tts.voice)
 	}
 	expectedSpeechURL := "https://api.code.signor.ai/api-2/v1/audio/speech"
 	if gotURL := tts.getSpeechURL(); gotURL != expectedSpeechURL {
@@ -43,8 +43,8 @@ func TestNewTTSClient_SignorAI(t *testing.T) {
 }
 
 func TestGeminiVoiceMapping(t *testing.T) {
-	if v := getGeminiVoiceName("alloy"); v != "Kore" {
-		t.Errorf("expected alloy to map to Kore, got %s", v)
+	if v := getGeminiVoiceName("alloy"); v != "Puck" {
+		t.Errorf("expected alloy to map to Puck (Male voice), got %s", v)
 	}
 	if v := getGeminiVoiceName("Puck"); v != "Puck" {
 		t.Errorf("expected Puck to remain Puck, got %s", v)
