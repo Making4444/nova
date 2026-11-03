@@ -52,6 +52,16 @@ func (t *OpenRouterTTS) SetBaseURL(baseURL string) {
 	t.baseURL = strings.TrimSpace(baseURL)
 }
 
+// SetModelAndVoice dynamically updates the TTS model and voice at runtime.
+func (t *OpenRouterTTS) SetModelAndVoice(model, voice string) {
+	if strings.TrimSpace(model) != "" {
+		t.model = strings.TrimSpace(model)
+	}
+	if strings.TrimSpace(voice) != "" {
+		t.voice = strings.TrimSpace(voice)
+	}
+}
+
 func (t *OpenRouterTTS) getSpeechURL() string {
 	if strings.TrimSpace(t.baseURL) != "" {
 		base := strings.TrimSpace(t.baseURL)

@@ -127,6 +127,40 @@ func (c *OpenRouterClient) GetGeminiBaseURL() string {
 	return c.geminiBaseURL
 }
 
+// SetModels dynamically updates the active AI models for routing.
+func (c *OpenRouterClient) SetModels(chat, math, academic, vision, summarizer string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if strings.TrimSpace(chat) != "" {
+		c.modelChat = strings.TrimSpace(chat)
+	}
+	if strings.TrimSpace(math) != "" {
+		c.modelMath = strings.TrimSpace(math)
+	}
+	if strings.TrimSpace(academic) != "" {
+		c.modelAcademic = strings.TrimSpace(academic)
+	}
+	if strings.TrimSpace(vision) != "" {
+		c.modelVision = strings.TrimSpace(vision)
+	}
+	if strings.TrimSpace(summarizer) != "" {
+		c.modelSummarizer = strings.TrimSpace(summarizer)
+	}
+}
+
+// GetModels returns the currently configured AI models.
+func (c *OpenRouterClient) GetModels() map[string]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return map[string]string{
+		"chat":       c.modelChat,
+		"math":       c.modelMath,
+		"academic":   c.modelAcademic,
+		"vision":     c.modelVision,
+		"summarizer": c.modelSummarizer,
+	}
+}
+
 func (c *OpenRouterClient) getEndpointForModel(model string) string {
 	c.mu.Lock()
 	baseURL := c.apiBaseURL
@@ -550,8 +584,16 @@ type openRouterChoice struct {
 	FinishReason string            `json:"finish_reason,omitempty"`
 }
 
+type openRouterUsage struct {
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	Cost             float64 `json:"cost"`
+}
+
 type openRouterResponse struct {
 	Choices []openRouterChoice `json:"choices"`
+	Usage   *openRouterUsage   `json:"usage,omitempty"`
 	Error   *struct {
 		Message string `json:"message"`
 		Code    int    `json:"code"`
@@ -1008,22 +1050,29 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	}
 
 	// 1. Smart Model Selection
-	selectedModel := c.modelChat
+	c.mu.Lock()
+	mChat := c.modelChat
+	mVision := c.modelVision
+	mMath := c.modelMath
+	mAcademic := c.modelAcademic
+	c.mu.Unlock()
+
+	selectedModel := mChat
 	mediaURL := payload.MediaDataURL
 
 	if mediaURL != nil && *mediaURL != "" {
-		selectedModel = c.modelVision
+		selectedModel = mVision
 		fmt.Printf("\n[🧠 Smart Router] Image attached -> Routed to Vision Model: %s\n", selectedModel)
 	} else if c.groqRouter != nil {
 		category := c.groqRouter.ClassifyQuery(ctx, payload.MessageText)
 		if category == CategoryMath {
-			selectedModel = c.modelMath
+			selectedModel = mMath
 			fmt.Printf("\n[🧠 Smart Router] Math problem detected by Groq -> Routed to Math Specialist: %s\n", selectedModel)
 		} else if category == CategoryAcademic {
-			selectedModel = c.modelAcademic
+			selectedModel = mAcademic
 			fmt.Printf("\n[🧠 Smart Router] Academic & Curriculum query detected -> Routed to Academic Specialist: %s\n", selectedModel)
 		} else {
-			selectedModel = c.modelChat
+			selectedModel = mChat
 			fmt.Printf("\n[🧠 Smart Router] Conversational query -> Routed to Main Chat Model: %s\n", selectedModel)
 		}
 	}
@@ -1032,7 +1081,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 	messages := c.buildMessages(payload)
 
 	// 3. Execute initial attempt with Tool Calling loop
-	rawResp, _, err := c.executeConversation(ctx, selectedModel, messages, payload)
+	rawResp, _, costUSD, tokensUsed, err := c.executeConversation(ctx, selectedModel, messages, payload)
 	if err != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("openrouter request failed: %w", err)
@@ -1040,6 +1089,8 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 
 	parsed, parseErr := ParseResponse(rawResp)
 	if parseErr == nil {
+		parsed.CostUSD = costUSD
+		parsed.TokensUsed = tokensUsed
 		c.recordSuccess()
 		return parsed, nil
 	}
@@ -1053,7 +1104,7 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		},
 	)
 
-	rawRetryResp, _, retryErr := c.executeConversation(ctx, selectedModel, retryMessages, payload)
+	rawRetryResp, _, retryCostUSD, retryTokensUsed, retryErr := c.executeConversation(ctx, selectedModel, retryMessages, payload)
 	if retryErr != nil {
 		c.recordFailure()
 		return nil, fmt.Errorf("retry openrouter request failed: %w", retryErr)
@@ -1065,6 +1116,8 @@ func (c *OpenRouterClient) GenerateResponse(ctx context.Context, payload *trigge
 		return nil, fmt.Errorf("failed to parse AI response after retry (%w): initial raw: %q, retry raw: %q", retryParseErr, rawResp, rawRetryResp)
 	}
 
+	parsedRetry.CostUSD = costUSD + retryCostUSD
+	parsedRetry.TokensUsed = tokensUsed + retryTokensUsed
 	c.recordSuccess()
 	return parsedRetry, nil
 }
@@ -1199,10 +1252,12 @@ func (c *OpenRouterClient) SolveAcademicDirectly(ctx context.Context, subject, q
 }
 
 // executeConversation executes the message list, handling tool calls (web_search, schedule_followup, solve_math_problem, consult_curriculum_expert, update_user_memory).
-func (c *OpenRouterClient) executeConversation(ctx context.Context, model string, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, error) {
+func (c *OpenRouterClient) executeConversation(ctx context.Context, model string, messages []openRouterMessage, payload *trigger.RequestPayload) (string, bool, float64, int, error) {
 	currentMessages := make([]openRouterMessage, len(messages))
 	copy(currentMessages, messages)
 	usedSearch := false
+	var totalCostUSD float64
+	var totalTokens int
 
 	isInternal := isInternalToolsModel(model)
 
@@ -1212,20 +1267,34 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 	}
 
 	for step := 0; step < maxToolSteps; step++ {
-		choiceMsg, err := c.callAPI(ctx, model, currentMessages, apiTools)
+		choiceMsg, usage, err := c.callAPIWithUsage(ctx, model, currentMessages, apiTools)
+		if usage != nil {
+			totalCostUSD += usage.Cost
+			totalTokens += usage.TotalTokens
+		}
 		if err != nil {
 			// 1. If call with tools failed (e.g. 500 error from proxy/model not supporting tools), retry without tools
 			if len(apiTools) > 0 {
 				fmt.Printf("\n[⚠️ Fallback] Call to %s with tools failed (%v). Retrying without tools...\n", model, err)
-				choiceMsg, err = c.callAPI(ctx, model, currentMessages, nil)
+				var fbUsage *openRouterUsage
+				choiceMsg, fbUsage, err = c.callAPIWithUsage(ctx, model, currentMessages, nil)
+				if fbUsage != nil {
+					totalCostUSD += fbUsage.Cost
+					totalTokens += fbUsage.TotalTokens
+				}
 			}
 			// 2. If still failing and model is not gemini-3.8-flash, fallback to gemini-3.8-flash on api-4
 			if err != nil && model != "gemini-3.8-flash" && c.modelAcademic == "gemini-3.8-flash" {
 				fmt.Printf("\n[⚠️ Fallback] Model %s failed (%v). Retrying with gemini-3.8-flash...\n", model, err)
-				choiceMsg, err = c.callAPI(ctx, "gemini-3.8-flash", currentMessages, nil)
+				var fbUsage *openRouterUsage
+				choiceMsg, fbUsage, err = c.callAPIWithUsage(ctx, "gemini-3.8-flash", currentMessages, nil)
+				if fbUsage != nil {
+					totalCostUSD += fbUsage.Cost
+					totalTokens += fbUsage.TotalTokens
+				}
 			}
 			if err != nil {
-				return "", usedSearch, err
+				return "", usedSearch, totalCostUSD, totalTokens, err
 			}
 		}
 
@@ -1233,34 +1302,34 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 		if isInternal {
 			contentStr, ok := choiceMsg.Content.(string)
 			if !ok {
-				return "", usedSearch, fmt.Errorf("unexpected content format from internal tools model")
+				return "", usedSearch, totalCostUSD, totalTokens, fmt.Errorf("unexpected content format from internal tools model")
 			}
 			internalCall := parseInternalToolCall(contentStr)
 			if internalCall != nil {
 				toolRes, isVoice, usedSearchFlag := c.executeInternalTool(ctx, internalCall, payload)
 				if isVoice {
-					return toolRes, usedSearch, nil
+					return toolRes, usedSearch, totalCostUSD, totalTokens, nil
 				}
 				if usedSearchFlag {
 					usedSearch = true
 				}
 				currentMessages = append(currentMessages, choiceMsg)
 				currentMessages = append(currentMessages, openRouterMessage{
-					Role: "user",
+					Role:    "user",
 					Content: fmt.Sprintf("[نتيجة أداة %s]:\n%s\n\nأكمل الآن ردك النهائي للمستخدم بالعامية المصرية بناءً على هذه النتيجة وبدون استدعاء أي أدوات إضافية.", internalCall.Name, toolRes),
 				})
 				continue
 			}
 
 			// Direct response from gpt-6-luna without tools!
-			return strings.TrimSpace(contentStr), usedSearch, nil
+			return strings.TrimSpace(contentStr), usedSearch, totalCostUSD, totalTokens, nil
 		}
 
 		if len(choiceMsg.ToolCalls) == 0 {
 			if contentStr, ok := choiceMsg.Content.(string); ok {
-				return strings.TrimSpace(contentStr), usedSearch, nil
+				return strings.TrimSpace(contentStr), usedSearch, totalCostUSD, totalTokens, nil
 			}
-			return "", usedSearch, fmt.Errorf("unexpected content format in model response")
+			return "", usedSearch, totalCostUSD, totalTokens, fmt.Errorf("unexpected content format in model response")
 		}
 
 		currentMessages = append(currentMessages, choiceMsg)
@@ -1533,7 +1602,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 					"send_as_voice": true,
 				}
 				vBytes, _ := json.Marshal(voicePayload)
-				return string(vBytes), usedSearch, nil
+				return string(vBytes), usedSearch, totalCostUSD, totalTokens, nil
 			}
 		}
 	}
@@ -1543,21 +1612,35 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 		Role:    "user",
 		Content: "يرجى كتابة ردك النهائي بالعامية المصرية والرد على المستخدم مباشرة بناءً على نتائج الأدوات والمعلومات التي جمعتها أعلاه، بدون استدعاء أي أدوات إضافية.",
 	})
-	finalChoice, finalErr := c.callAPI(ctx, model, currentMessages, nil)
+	finalChoice, finalUsage, finalErr := c.callAPIWithUsage(ctx, model, currentMessages, nil)
+	if finalUsage != nil {
+		totalCostUSD += finalUsage.Cost
+		totalTokens += finalUsage.TotalTokens
+	}
 	if finalErr == nil {
 		if contentStr, ok := finalChoice.Content.(string); ok && strings.TrimSpace(contentStr) != "" {
-			return strings.TrimSpace(contentStr), usedSearch, nil
+			return strings.TrimSpace(contentStr), usedSearch, totalCostUSD, totalTokens, nil
 		}
 	}
 
-	return "", usedSearch, fmt.Errorf("exceeded maximum tool calling steps")
+	return "", usedSearch, totalCostUSD, totalTokens, fmt.Errorf("exceeded maximum tool calling steps")
 }
 
 func (c *OpenRouterClient) callAPI(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition) (openRouterMessage, error) {
-	return c.callAPICustom(ctx, model, messages, tools, c.GetMaxTokens())
+	msg, _, err := c.callAPICustomWithUsage(ctx, model, messages, tools, c.GetMaxTokens())
+	return msg, err
+}
+
+func (c *OpenRouterClient) callAPIWithUsage(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition) (openRouterMessage, *openRouterUsage, error) {
+	return c.callAPICustomWithUsage(ctx, model, messages, tools, c.GetMaxTokens())
 }
 
 func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition, maxTokens int) (openRouterMessage, error) {
+	msg, _, err := c.callAPICustomWithUsage(ctx, model, messages, tools, maxTokens)
+	return msg, err
+}
+
+func (c *OpenRouterClient) callAPICustomWithUsage(ctx context.Context, model string, messages []openRouterMessage, tools []toolDefinition, maxTokens int) (openRouterMessage, *openRouterUsage, error) {
 	if maxTokens <= 0 {
 		maxTokens = c.GetMaxTokens()
 	}
@@ -1591,12 +1674,12 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return openRouterMessage{}, err
+		return openRouterMessage{}, nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return openRouterMessage{}, err
+		return openRouterMessage{}, nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
@@ -1608,30 +1691,30 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return openRouterMessage{}, err
+		return openRouterMessage{}, nil, err
 	}
 	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return openRouterMessage{}, err
+		return openRouterMessage{}, nil, err
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return openRouterMessage{}, fmt.Errorf("AI provider API error (status %d): %s", resp.StatusCode, string(respBytes))
+		return openRouterMessage{}, nil, fmt.Errorf("AI provider API error (status %d): %s", resp.StatusCode, string(respBytes))
 	}
 
 	var orResp openRouterResponse
 	if err := json.Unmarshal(respBytes, &orResp); err != nil {
-		return openRouterMessage{}, fmt.Errorf("failed to decode AI provider response: %w", err)
+		return openRouterMessage{}, nil, fmt.Errorf("failed to decode AI provider response: %w", err)
 	}
 
 	if orResp.Error != nil {
-		return openRouterMessage{}, fmt.Errorf("AI provider returned error: %s (code: %d)", orResp.Error.Message, orResp.Error.Code)
+		return openRouterMessage{}, nil, fmt.Errorf("AI provider returned error: %s (code: %d)", orResp.Error.Message, orResp.Error.Code)
 	}
 
 	if len(orResp.Choices) == 0 {
-		return openRouterMessage{}, errors.New("openrouter returned empty choices list")
+		return openRouterMessage{}, nil, errors.New("openrouter returned empty choices list")
 	}
 
 	choice := orResp.Choices[0]
@@ -1639,7 +1722,7 @@ func (c *OpenRouterClient) callAPICustom(ctx context.Context, model string, mess
 		fmt.Printf("\n[⚠️ Warning] OpenRouter response reached max_tokens ceiling (%d tokens)! Output was truncated by provider.\n", maxTokens)
 	}
 
-	return choice.Message, nil
+	return choice.Message, orResp.Usage, nil
 }
 
 // SummarizeChatHistory analyzes raw messages from a conversation and generates a structured summary + user profiles.

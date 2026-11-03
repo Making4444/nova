@@ -17,6 +17,7 @@ import (
 
 	"novabot/internal/admin"
 	"novabot/internal/ai"
+	"novabot/internal/billing"
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/games"
@@ -55,6 +56,7 @@ type EventHandler struct {
 	pacer            *pacing.HumanPacer
 	diversityFilter  *pacing.StyleDiversityFilter
 	dashServer       *dashboard.Server
+	billingStore     *billing.Store
 	historyLimit     int
 	logger           waLog.Logger
 	novaMsgMu        sync.RWMutex
@@ -96,6 +98,11 @@ func NewEventHandler(
 // SetDashboard attaches the live web admin dashboard server for metrics and logs.
 func (h *EventHandler) SetDashboard(srv *dashboard.Server) {
 	h.dashServer = srv
+}
+
+// SetBillingStore assigns the commercial billing store.
+func (h *EventHandler) SetBillingStore(store *billing.Store) {
+	h.billingStore = store
 }
 
 // SetAttentionGate overrides the default AttentionGate (useful for custom TTLs or tests).
@@ -437,6 +444,21 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	if h.dashServer != nil {
 		if m := h.dashServer.GetMetrics(); m != nil {
 			m.RecordEvent(false, 0, "", "", senderName, chatID, cleanText)
+		}
+	}
+
+	// 2.9 Commercial Billing Link Code Interception (6-digit OTP e.g. 123456)
+	candidateCode := strings.TrimSpace(cleanText)
+	if h.billingStore != nil && len(candidateCode) == 6 && isNumericString(candidateCode) {
+		linkedUser, linkErr := h.billingStore.VerifyAndLinkCode(candidateCode, chatID, chatType, senderName)
+		if linkErr == nil && linkedUser != nil {
+			h.logger.Infof("Successfully linked chat %s (sender: %s) to user %s (#%d)", chatID, senderID, linkedUser.Username, linkedUser.ID)
+			fmt.Printf("\n[🔗 Account Linked] Chat %s linked to User %s (#%d) with balance: %.2f EGP\n", chatID, linkedUser.Username, linkedUser.ID, linkedUser.BalanceEGP)
+			replyMsg := fmt.Sprintf("🎉 تم ربط الحساب بنجاح!\nمرحباً بك يا %s في منصة نوفا الذكية.\nرصيدك الحالي: %.2f جنيه مصري.\n\nيمكنك الآن توجيه أسئلتك لنوفا مباشرة وستقوم بالرد عليك!", linkedUser.Username, linkedUser.BalanceEGP)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_ = h.SendMessage(ctx, chatID, replyMsg, messageID)
+			cancel()
+			return
 		}
 	}
 
@@ -819,6 +841,34 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 		return
 	}
 
+	// 5. Commercial Paywall Gate & Account Verification
+	var billingUser *billing.User
+	isBillingExempt := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699")
+	if !isBillingExempt && h.billingStore != nil {
+		var bErr error
+		billingUser, bErr = h.billingStore.GetLinkedUserForChat(chatID)
+		if bErr != nil || billingUser == nil {
+			billingUser, bErr = h.billingStore.GetLinkedUserForChat(senderID)
+		}
+		if bErr != nil || billingUser == nil {
+			h.logger.Infof("Chat %s / Sender %s is not linked to any commercial billing account", chatID, senderID)
+			unlinkedNotice := "⚠️ عذراً، هذا الحساب أو الجروب غير مرتبط بحساب على منصة نوفا الذكية.\n\nمنصة نوفا أصبحت خدمة تجارية مدفوعة، للاستخدام:\n1. سجل حسابك عبر الرابط: https://nova.elyon.buzz\n2. اضغط على 'إضافة حساب أو جروب واتساب' للحصول على كود الربط.\n3. أرسل كود الربط المكون من 6 أرقام هنا وسيتم تفعيل حسابك فوراً!"
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_ = h.SendMessage(ctx, chatID, unlinkedNotice, messageID)
+			cancel()
+			return
+		}
+
+		if billingUser.BalanceEGP <= 0 {
+			h.logger.Infof("User %s (#%d) in chat %s has depleted balance (%.2f EGP)", billingUser.Username, billingUser.ID, chatID, billingUser.BalanceEGP)
+			depletedNotice := fmt.Sprintf("⚠️ عذراً يا %s، رصيد حسابك في منصة نوفا قد نفذ (%.2f جنيه).\n\nيرجى شحن رصيدك عبر المنصة لمتابعة الاستخدام:\nhttps://nova.elyon.buzz\n\nوسائل الدفع المتاحة: إنستاباي وفودافون كاش.", billingUser.Username, billingUser.BalanceEGP)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			_ = h.SendMessage(ctx, chatID, depletedNotice, messageID)
+			cancel()
+			return
+		}
+	}
+
 	h.logger.Infof("Trigger matched (%s) in chat %s by %s (%d coalesced bubble(s)), generating AI response...", decision.Reason, chatID, senderName, len(merged))
 	var aiResp *ai.ResponsePayload
 	if h.aiGenerateFn != nil {
@@ -853,6 +903,25 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 	// Grant or refresh 90s attention lease
 	if h.attentionGate != nil {
 		h.attentionGate.GrantLease(chatID, senderID, lastEvt.Info.IsFromMe)
+	}
+
+	// Deduct balance from linked commercial user
+	if !isBillingExempt && h.billingStore != nil && billingUser != nil {
+		costUSD := aiResp.CostUSD
+		if costUSD <= 0 && aiResp.TokensUsed > 0 {
+			costUSD = float64(aiResp.TokensUsed) * 0.0000003
+		}
+		if costUSD <= 0 {
+			costUSD = 0.00001
+		}
+
+		desc := fmt.Sprintf("استهلاك ذكاء اصطناعي (%d توكن)", aiResp.TokensUsed)
+		deductedEGP, newBal, dErr := h.billingStore.DeductBalance(billingUser.ID, chatID, costUSD, aiResp.TokensUsed, desc)
+		if dErr == nil {
+			fmt.Printf("\n[💳 Billing Paywall] Deducted %.4f EGP (USD: $%.6f, Tokens: %d) from User #%d (%s). Remaining balance: %.2f EGP\n", deductedEGP, costUSD, aiResp.TokensUsed, billingUser.ID, billingUser.Username, newBal)
+		} else {
+			h.logger.Errorf("Failed to deduct balance for user %d: %v", billingUser.ID, dErr)
+		}
 	}
 
 	// Target message to reply (quote) or react to
@@ -1114,4 +1183,16 @@ func StripAudioTags(s string) string {
 	clean := audioTagsRegex.ReplaceAllString(s, "")
 	clean = strings.ReplaceAll(clean, "  ", " ")
 	return strings.TrimSpace(clean)
+}
+
+func isNumericString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

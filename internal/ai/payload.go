@@ -11,4 +11,6 @@ type ResponsePayload struct {
 	Mood             *string  `json:"mood"`
 	SendAsVoice      *bool    `json:"send_as_voice,omitempty"`
 	ReactionEmoji    *string  `json:"reaction_emoji,omitempty"`
+	CostUSD          float64  `json:"cost_usd,omitempty"`
+	TokensUsed       int      `json:"tokens_used,omitempty"`
 }

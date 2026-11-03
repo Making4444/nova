@@ -14,12 +14,14 @@ import (
 
 	"novabot/internal/admin"
 	"novabot/internal/ai"
+	"novabot/internal/billing"
 	"novabot/internal/config"
 	"novabot/internal/curriculum"
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/games"
 	"novabot/internal/memory"
+	"novabot/internal/portal"
 	"novabot/internal/scheduler"
 	"novabot/internal/storage"
 	"novabot/internal/tools"
@@ -176,6 +178,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 2.5 Initialize Commercial Billing & Paywall Store
+	billingStore, err := billing.NewStore("data/billing.db")
+	if err != nil {
+		logger.Errorf("Failed to initialize commercial billing store: %v", err)
+		os.Exit(1)
+	}
+	defer billingStore.Close()
+
 	toolRegistry := tools.NewDefaultRegistry(cfg.OpenRouterAPIKey)
 
 	sessionContainer, err := storage.InitSessionStore(ctx, cfg.SessionDBPath, logger)
@@ -245,18 +255,28 @@ func main() {
 	eventHandler.SetEmotionEngine(emotionEngine)
 	eventHandler.SetMemoryEngine(memoryEngine)
 	eventHandler.SetToolRegistry(toolRegistry)
+	eventHandler.SetBillingStore(billingStore)
 
 	if cfg.GroqAPIKey != "" {
 		groqSTT := voice.NewGroqSTT(cfg.GroqAPIKey, cfg.ModelWhisper)
 		eventHandler.SetGroqSTT(groqSTT)
 	}
 
+	var ttsClient *voice.OpenRouterTTS
 	if cfg.SignorAPIKey != "" {
-		ttsClient := voice.NewTTSClient(cfg.SignorAPIKey, cfg.SignorTTSBaseURL, cfg.SignorTTSModel, cfg.TTSVoice)
+		ttsClient = voice.NewTTSClient(cfg.SignorAPIKey, cfg.SignorTTSBaseURL, cfg.SignorTTSModel, cfg.TTSVoice)
 		eventHandler.SetTTSClient(ttsClient)
 	} else if cfg.OpenRouterAPIKey != "" {
-		ttsClient := voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
+		ttsClient = voice.NewOpenRouterTTS(cfg.OpenRouterAPIKey, cfg.TTSModel, cfg.TTSVoice)
 		eventHandler.SetTTSClient(ttsClient)
+	}
+
+	// Apply dynamic AI models and TTS configuration from the Billing Store if configured
+	if bSettings, err := billingStore.GetSettings(); err == nil && bSettings != nil {
+		aiClient.SetModels(bSettings.ModelChat, bSettings.ModelMath, bSettings.ModelAcademic, bSettings.ModelVision, bSettings.ModelSummarizer)
+		if ttsClient != nil {
+			ttsClient.SetModelAndVoice(bSettings.TTSModel, bSettings.TTSVoice)
+		}
 	}
 
 	// 5.5 Initialize Interactive Games Engine
@@ -319,6 +339,18 @@ func main() {
 	}()
 	fmt.Printf("🌐 لوحة التحكم (Live Web Admin Dashboard): http://localhost%s\n", dashPortStr)
 
+	// 7.5 Start Commercial Web Portal on Port 8000 (Subdomain: https://nova.elyon.buzz)
+	portalServer := portal.NewServer(portal.ServerConfig{
+		Port:          ":8000",
+		Store:         billingStore,
+		AIClient:      aiClient,
+		TTSClient:     ttsClient,
+		AdminPassword: cfg.DashboardPassword,
+	})
+	if err := portalServer.Start(); err != nil {
+		logger.Errorf("Failed to start commercial web portal: %v", err)
+	}
+
 	waClient.AddEventHandler(eventHandler.HandleEvent)
 
 	// 7. Connect to WhatsApp (Generates QR if not authenticated)
@@ -338,6 +370,11 @@ func main() {
 	<-sigChan
 
 	fmt.Println("\n🛑 جاري إيقاف نوفا وفصل الاتصال بأمان...")
+	if portalServer != nil {
+		pStopCtx, pStopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = portalServer.Shutdown(pStopCtx)
+		pStopCancel()
+	}
 	if dashServer != nil {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = dashServer.Stop(stopCtx)
