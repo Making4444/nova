@@ -67,20 +67,21 @@ type Transaction struct {
 
 // PlatformSettings holds the commercial parameters and model configurations.
 type PlatformSettings struct {
-	USDEquivalentEGP    float64 `json:"usd_equivalent_egp"`     // Default 55.0
-	FixedMarginEGP      float64 `json:"fixed_margin_egp"`       // Default 0.10 EGP (10 piasters)
-	EnforcePaid         bool    `json:"enforce_paid"`           // Default true
-	AdminPassword       string  `json:"admin_password"`          // Default "nova_admin_2026"
-	ModelChat           string  `json:"model_chat"`             // e.g. "gemini-3.8-flash"
-	ModelMath           string  `json:"model_math"`             // e.g. "gemini-3.8-flash"
-	ModelVision         string  `json:"model_vision"`           // e.g. "gemini-3.8-flash"
-	ModelAcademic       string  `json:"model_academic"`         // e.g. "gemini-3.8-flash"
-	ModelSummarizer     string  `json:"model_summarizer"`       // e.g. "gemini-3.8-flash"
-	TTSModel            string  `json:"tts_model"`              // e.g. "gemini-3.8-flash-tts"
-	TTSVoice            string  `json:"tts_voice"`              // e.g. "Puck"
-	RechargeInstapay    string  `json:"recharge_instapay"`      // e.g. "makari@instapay"
-	RechargeVodafone    string  `json:"recharge_vodafone"`      // e.g. "01202172699"
-	RechargeInstructions string `json:"recharge_instructions"`  // Friendly text
+	USDEquivalentEGP      float64 `json:"usd_equivalent_egp"`              // Default 55.0
+	USDtoEGPRate          float64 `json:"usd_to_egp_rate,omitempty"`       // Alias for admin UI compatibility
+	FixedMarginEGP        float64 `json:"fixed_margin_egp"`                // Default 0.10 EGP (10 piasters)
+	EnforcePaid           bool    `json:"enforce_paid"`                    // Default true
+	AdminPassword         string  `json:"admin_password"`                  // Default "nova_admin_2026"
+	ModelChat             string  `json:"model_chat"`                      // e.g. "gemini-3.8-flash"
+	ModelMath             string  `json:"model_math"`                      // e.g. "gemini-3.8-flash"
+	ModelVision           string  `json:"model_vision"`                    // e.g. "gemini-3.8-flash"
+	ModelAcademic         string  `json:"model_academic"`                  // e.g. "gemini-3.8-flash"
+	ModelSummarizer       string  `json:"model_summarizer"`                // e.g. "gemini-3.8-flash"
+	TTSModel              string  `json:"tts_model"`                       // e.g. "gemini-3.8-flash-tts"
+	TTSVoice              string  `json:"tts_voice"`                       // e.g. "Charon"
+	RechargeInstapay      string  `json:"recharge_instapay"`               // e.g. "makari@instapay"
+	RechargeVodafone      string  `json:"recharge_vodafone"`               // e.g. "01202172699"
+	RechargeInstructions string  `json:"recharge_instructions"`           // Friendly text
 }
 
 // Store manages all billing and user records in SQLite.
@@ -669,6 +670,10 @@ func (s *Store) getSettingsInternal() PlatformSettings {
 		}
 	}
 
+	if cfg.USDtoEGPRate <= 0 {
+		cfg.USDtoEGPRate = cfg.USDEquivalentEGP
+	}
+
 	return cfg
 }
 
@@ -676,6 +681,13 @@ func (s *Store) getSettingsInternal() PlatformSettings {
 func (s *Store) UpdateSettings(cfg *PlatformSettings) error {
 	if cfg == nil {
 		return errors.New("nil settings")
+	}
+
+	if cfg.USDtoEGPRate > 0 {
+		cfg.USDEquivalentEGP = cfg.USDtoEGPRate
+	}
+	if cfg.USDEquivalentEGP <= 0 {
+		cfg.USDEquivalentEGP = 55.0
 	}
 
 	s.mu.Lock()

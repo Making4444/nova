@@ -580,12 +580,12 @@
 
     function populateSettings(s) {
         globalSettings = s;
-        document.getElementById('usdToEgpInput').value = s.usd_to_egp_rate || 55;
+        document.getElementById('usdToEgpInput').value = s.usd_to_egp_rate || s.usd_equivalent_egp || 55;
         document.getElementById('fixedMarginInput').value = s.fixed_margin_egp || 0.10;
         document.getElementById('instapayInput').value = s.recharge_instapay || '';
         document.getElementById('vodafoneInput').value = s.recharge_vodafone || '';
 
-        document.getElementById('statUsdRate').innerText = (s.usd_to_egp_rate || 55).toFixed(2);
+        document.getElementById('statUsdRate').innerText = (s.usd_to_egp_rate || s.usd_equivalent_egp || 55).toFixed(2);
         document.getElementById('statMarginRate').innerText = (s.fixed_margin_egp || 0.10).toFixed(2);
 
         document.getElementById('modelChatInput').value = s.model_chat || 'gemini-3.8-flash';

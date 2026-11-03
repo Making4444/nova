@@ -166,15 +166,19 @@ func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
 		Name:     "nova_portal_session",
 		Value:    "",
 		Path:     "/",
+		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name:     "nova_admin_session",
 		Value:    "",
 		Path:     "/",
+		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -204,9 +208,12 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if sess, ok := s.getSession(r); ok && sess.UserID > 0 {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
-		return
+	if sess, ok := s.getSession(r); ok {
+		if sess.UserID > 0 {
+			http.Redirect(w, r, "/dashboard", http.StatusFound)
+			return
+		}
+		s.clearSession(w, r)
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(indexHTML)
@@ -307,6 +314,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
+		s.clearSession(w, r)
 		jsonError(w, "غير مسجل الدخول", http.StatusUnauthorized)
 		return
 	}
