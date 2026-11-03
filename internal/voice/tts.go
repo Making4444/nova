@@ -188,7 +188,7 @@ func (t *OpenRouterTTS) getGeminiGenerateContentURL() string {
 	base = strings.TrimSuffix(base, "/")
 
 	model := t.model
-	if model == "" {
+	if model == "" || strings.Contains(model, "3.1") {
 		model = "gemini-3.8-flash-tts"
 	}
 	return fmt.Sprintf("%s/v1beta/models/%s:generateContent", base, model)
@@ -197,19 +197,22 @@ func (t *OpenRouterTTS) getGeminiGenerateContentURL() string {
 func getGeminiVoiceName(configuredVoice string) string {
 	v := strings.TrimSpace(configuredVoice)
 	switch strings.ToLower(v) {
-	case "alloy", "puck":
+	case "charon", "echo", "onyx", "male", "boy", "ولد", "راجل", "رجالي":
+		return "Charon"
+	case "puck":
 		return "Puck"
-	case "charon", "echo", "onyx":
+	case "alloy":
+		// User specifically requested alloy as boy/male voice -> map to Charon (masculine expressive boy voice)
 		return "Charon"
 	case "fenrir":
 		return "Fenrir"
 	case "aoede", "shimmer":
 		return "Aoede"
-	case "kore", "nova":
+	case "kore", "nova", "female", "بنت":
 		return "Kore"
 	default:
-		// Default to Puck (expressive male voice for Nova)
-		return "Puck"
+		// Default to Charon (expressive male voice for Nova)
+		return "Charon"
 	}
 }
 
@@ -264,7 +267,30 @@ func (t *OpenRouterTTS) fetchGeminiNativeSpeechAudio(ctx context.Context, cleanT
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, 0, fmt.Errorf("Gemini audio API error (status %d): %s", resp.StatusCode, string(respBytes))
+		// If initial model was not gemini-3.8-flash-tts, fallback to gemini-3.8-flash-tts
+		if !strings.Contains(endpoint, "gemini-3.8-flash-tts") {
+			fmt.Printf("\n[⚠️ TTS Fallback] Endpoint %s failed (%d), retrying with gemini-3.8-flash-tts...\n", endpoint, resp.StatusCode)
+			baseParts := strings.Split(endpoint, "/v1beta/")
+			if len(baseParts) > 0 {
+				fallbackEndpoint := fmt.Sprintf("%s/v1beta/models/gemini-3.8-flash-tts:generateContent", baseParts[0])
+				fbReq, fbErr := http.NewRequestWithContext(ctx, http.MethodPost, fallbackEndpoint, bytes.NewReader(bodyBytes))
+				if fbErr == nil {
+					fbReq.Header.Set("Authorization", "Bearer "+t.apiKey)
+					fbReq.Header.Set("Content-Type", "application/json")
+					fbResp, doErr := t.httpClient.Do(fbReq)
+					if doErr == nil {
+						defer fbResp.Body.Close()
+						if fbResp.StatusCode == http.StatusOK {
+							respBytes, _ = io.ReadAll(fbResp.Body)
+							resp = fbResp
+						}
+					}
+				}
+			}
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, 0, fmt.Errorf("Gemini audio API error (status %d): %s", resp.StatusCode, string(respBytes))
+		}
 	}
 
 	var gemResp geminiAudioResponse

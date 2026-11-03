@@ -843,7 +843,7 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 
 	// 5. Commercial Paywall Gate & Account Verification
 	var billingUser *billing.User
-	isBillingExempt := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699")
+	isBillingExempt := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699") || strings.Contains(senderID, "48387269337269") || strings.Contains(chatID, "48387269337269") || strings.Contains(senderID, "105012604760193")
 	if !isBillingExempt && h.billingStore != nil {
 		var bErr error
 		billingUser, bErr = h.billingStore.GetLinkedUserForChat(chatID)
@@ -1026,6 +1026,16 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 						IsNova:     true,
 						Timestamp:  time.Now(),
 					})
+				}
+
+				// Deduct commercial balance for voice synthesis
+				if !isBillingExempt && h.billingStore != nil && billingUser != nil {
+					ttsCostUSD := float64(len([]rune(cleanVoiceText))) * 0.000005
+					ttsDesc := fmt.Sprintf("إنتاج رسالة صوتية فويس نوت (%d ثانية)", durSec)
+					dedEGP, remBal, dErr := h.billingStore.DeductBalance(billingUser.ID, chatID, ttsCostUSD, 0, ttsDesc)
+					if dErr == nil {
+						fmt.Printf("\n[🎙️ Billing Voice Note] Deducted %.4f EGP for Voice Note (%ds) from User #%d (%s). Remaining: %.2f EGP\n", dedEGP, durSec, billingUser.ID, billingUser.Username, remBal)
+					}
 				}
 			} else {
 				h.logger.Errorf("Failed to send voice note to WhatsApp: %v", err)

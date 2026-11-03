@@ -190,7 +190,7 @@ func (s *State) IsAdmin(senderID string, senderName string, isFromMe bool) bool 
 	}
 
 	// Match by known owner LID or direct sub-match
-	if strings.Contains(senderID, "105012604760193") || (s.AdminNumber != "" && strings.Contains(senderID, CleanPhoneNumber(s.AdminNumber))) {
+	if strings.Contains(senderID, "105012604760193") || strings.Contains(senderID, "48387269337269") || (s.AdminNumber != "" && strings.Contains(senderID, CleanPhoneNumber(s.AdminNumber))) {
 		return true
 	}
 
