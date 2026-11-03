@@ -80,6 +80,8 @@ type PlatformSettings struct {
 	ModelSummarizer       string  `json:"model_summarizer"`                // e.g. "gemini-3.8-flash"
 	TTSModel              string  `json:"tts_model"`                       // e.g. "gemini-3.8-flash-tts"
 	TTSVoice              string  `json:"tts_voice"`                       // e.g. "Charon"
+	ModelImage            string  `json:"model_image"`                     // e.g. "gpt-image-2.5-sunburst"
+	ImageBaseURL          string  `json:"image_base_url"`                  // e.g. "https://api.code.signor.ai/v1"
 	RechargeInstapay      string  `json:"recharge_instapay"`               // e.g. "makari@instapay"
 	RechargeVodafone      string  `json:"recharge_vodafone"`               // e.g. "01202172699"
 	RechargeInstructions string  `json:"recharge_instructions"`           // Friendly text
@@ -762,6 +764,8 @@ func (s *Store) getSettingsInternal() PlatformSettings {
 		ModelSummarizer:     "gemini-3.8-flash",
 		TTSModel:            "gemini-3.8-flash-tts",
 		TTSVoice:            "Charon",
+		ModelImage:          "gpt-image-2.5-sunburst",
+		ImageBaseURL:        "https://api.code.signor.ai/v1",
 		RechargeInstapay:     "makari@instapay",
 		RechargeVodafone:     "01202172699",
 		RechargeInstructions: "لشحن رصيدك عبر إنستاباي أو فودافون كاش، قم بالتحويل للرقم الموضح ثم تواصل لتأكيد الإيداع وإضافة الرصيد لحسابك فوراً.",
@@ -821,6 +825,14 @@ func (s *Store) getSettingsInternal() PlatformSettings {
 				if v != "" {
 					cfg.TTSVoice = v
 				}
+			case "model_image":
+				if v != "" {
+					cfg.ModelImage = v
+				}
+			case "image_base_url":
+				if v != "" {
+					cfg.ImageBaseURL = v
+				}
 			case "recharge_instapay":
 				cfg.RechargeInstapay = v
 			case "recharge_vodafone":
@@ -868,6 +880,8 @@ func (s *Store) UpdateSettings(cfg *PlatformSettings) error {
 		"model_summarizer":      cfg.ModelSummarizer,
 		"tts_model":             cfg.TTSModel,
 		"tts_voice":             cfg.TTSVoice,
+		"model_image":           cfg.ModelImage,
+		"image_base_url":         cfg.ImageBaseURL,
 		"recharge_instapay":     cfg.RechargeInstapay,
 		"recharge_vodafone":     cfg.RechargeVodafone,
 		"recharge_instructions": cfg.RechargeInstructions,

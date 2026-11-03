@@ -10,6 +10,7 @@ type ResponsePayload struct {
 	MemoryNote       *string  `json:"memory_note"`
 	Mood             *string  `json:"mood"`
 	SendAsVoice      *bool    `json:"send_as_voice,omitempty"`
+	ImagePrompt      *string  `json:"image_prompt,omitempty"`
 	ReactionEmoji    *string  `json:"reaction_emoji,omitempty"`
 	CostUSD          float64  `json:"cost_usd,omitempty"`
 	TokensUsed       int      `json:"tokens_used,omitempty"`

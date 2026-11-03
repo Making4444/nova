@@ -21,6 +21,7 @@ import (
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/games"
+	"novabot/internal/image"
 	"novabot/internal/memory"
 	"novabot/internal/pacing"
 	"novabot/internal/storage"
@@ -41,6 +42,7 @@ type EventHandler struct {
 	aiClient         *ai.OpenRouterClient
 	ttsClient        *voice.OpenRouterTTS
 	groqSTT          *voice.GroqSTT
+	imageGen         *image.Generator
 	emotionEngine    *emotion.Engine
 	memoryEngine     *memory.TriTierEngine
 	toolRegistry     *tools.Registry
@@ -141,6 +143,11 @@ func (h *EventHandler) SetTTSClient(tts *voice.OpenRouterTTS) {
 // SetGroqSTT attaches the Groq Whisper speech-to-text engine.
 func (h *EventHandler) SetGroqSTT(stt *voice.GroqSTT) {
 	h.groqSTT = stt
+}
+
+// SetImageGenerator attaches the AI image generation engine.
+func (h *EventHandler) SetImageGenerator(gen *image.Generator) {
+	h.imageGen = gen
 }
 
 // SetEmotionEngine attaches the human emotion simulation engine.
@@ -1000,7 +1007,91 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 	botSenderID := h.waClient.GetUserJID().ToNonAD().String()
 
 	var sentMsgID types.MessageID
-	if shouldSendVoice && h.ttsClient != nil {
+
+	// 1. Image Generation Delivery (High Priority if requested or invoked by AI)
+	aiWantsImage := (aiResp.ImagePrompt != nil && strings.TrimSpace(*aiResp.ImagePrompt) != "")
+	isImageReq := IsImageRequested(cleanCombined)
+	shouldGenerateImage := (aiWantsImage || isImageReq) && h.imageGen != nil
+
+	if shouldGenerateImage {
+		imagePrompt := ""
+		if aiWantsImage {
+			imagePrompt = strings.TrimSpace(*aiResp.ImagePrompt)
+		} else {
+			imagePrompt = extractImagePrompt(cleanCombined)
+		}
+
+		if h.waClient.HasTransport() {
+			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+			presCancel()
+		}
+
+		fmt.Printf("\n[🎨 Image Generator] Generating image for prompt: %q\n", imagePrompt)
+		imgCtx, imgCancel := context.WithTimeout(context.Background(), 90*time.Second)
+		imgBytes, imgMime, imgCostUSD, imgErr := h.imageGen.GenerateImage(imgCtx, imagePrompt)
+		imgCancel()
+
+		if imgErr == nil && len(imgBytes) > 0 {
+			caption := ""
+			if aiResp.ReplyText != nil && strings.TrimSpace(*aiResp.ReplyText) != "" {
+				caption = strings.TrimSpace(StripAudioTags(*aiResp.ReplyText))
+			} else {
+				caption = "اتفضل يا غالي، الصورة اهي جاهزة ومخصوصة ليك! 🎨✨"
+			}
+
+			sendCtx, sendCancel := context.WithTimeout(context.Background(), 60*time.Second)
+			sentMsgID, err = h.waClient.SendImage(sendCtx, lastEvt.Info.Chat, imgBytes, imgMime, caption, targetMsgID, lastEvt.Info.Sender.String(), combinedText)
+			sendCancel()
+
+			if err == nil && sentMsgID != "" {
+				h.markAsNovaSent(string(sentMsgID))
+				h.logger.Infof("Nova replied with WhatsApp Image successfully (Sent ID: %s)", sentMsgID)
+
+				novaLog := storage.LogMessage{
+					MessageID:   string(sentMsgID),
+					SenderID:    botSenderID,
+					SenderName:  "Nova",
+					Text:        fmt.Sprintf("[Image] %s", caption),
+					IsNova:      true,
+					Timestamp:   time.Now().Format(time.RFC3339),
+					IsReply:     true,
+					RepliedToID: targetMsgID,
+				}
+				if h.chatLogger != nil {
+					_ = h.chatLogger.AppendMessage(chatType, chatID, novaLog)
+				}
+				if h.memoryEngine != nil {
+					_, _ = h.memoryEngine.RecordMessage(context.Background(), chatID, memory.MemoryMessage{
+						MessageID:  string(sentMsgID),
+						SenderID:   botSenderID,
+						SenderName: "Nova",
+						Text:       fmt.Sprintf("[Image] %s", caption),
+						IsNova:     true,
+						Timestamp:  time.Now(),
+					})
+				}
+
+				// Deduct commercial balance for image generation
+				if billingUser != nil && h.billingStore != nil {
+					imgDesc := fmt.Sprintf("توليد صورة بالذكاء الاصطناعي: %s", truncateString(imagePrompt, 35))
+					dedEGP, remBal, dErr := h.billingStore.DeductBalance(billingUser.ID, chatID, imgCostUSD, 0, imgDesc)
+					if dErr == nil {
+						fmt.Printf("\n[🎨 Billing Image] Deducted %.4f EGP for Image Generation from User #%d (%s). Remaining: %.2f EGP\n", dedEGP, billingUser.ID, billingUser.Username, remBal)
+					} else {
+						h.logger.Errorf("Failed to deduct image balance for user %d: %v", billingUser.ID, dErr)
+					}
+				}
+			} else {
+				h.logger.Errorf("Failed to send image to WhatsApp: %v", err)
+			}
+		} else {
+			h.logger.Warnf("Image generation failed (%v), falling back to regular reply", imgErr)
+		}
+	}
+
+	// 2. Voice Note Delivery
+	if sentMsgID == "" && shouldSendVoice && h.ttsClient != nil {
 		if h.waClient.HasTransport() {
 			presCtx, presCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = h.waClient.SendChatPresence(presCtx, lastEvt.Info.Chat, types.ChatPresenceComposing, types.ChatPresenceMediaAudio)
@@ -1209,6 +1300,53 @@ func StripAudioTags(s string) string {
 	clean := audioTagsRegex.ReplaceAllString(s, "")
 	clean = strings.ReplaceAll(clean, "  ", " ")
 	return strings.TrimSpace(clean)
+}
+
+// IsImageRequested detects whether the user's message is asking to draw, paint, generate, or design an image.
+func IsImageRequested(text string) bool {
+	lower := strings.ToLower(text)
+	normalized := trigger.NormalizeForMatch(text)
+
+	imageKeywords := []string{
+		"ارسم", "رسمة", "ارسميلي", "ارسم لي", "انشئ صورة", "انشئ لي صورة", "صمم صورة", "اعمل صورة", "اعملي صورة", "صورة لـ", "توليد صورة", "رسم صورة",
+		"draw", "paint", "generate image", "create image", "picture of", "image of",
+	}
+	for _, kw := range imageKeywords {
+		if strings.Contains(lower, kw) || strings.Contains(normalized, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractImagePrompt(text string) string {
+	cleaned := text
+	prefixes := []string{
+		"يا نوفا ارسميلي", "يا نوفا ارسم لي", "يا نوفا ارسم", "يا نوفا انشئ صورة", "يا نوفا صمم صورة", "يا نوفا صورة لـ", "يا نوفا صورة",
+		"نوفا ارسميلي", "نوفا ارسم لي", "نوفا ارسم", "نوفا انشئ صورة", "نوفا صمم صورة", "نوفا صورة لـ", "نوفا صورة",
+		"ارسميلي", "ارسم لي", "ارسم", "انشئ لي صورة", "انشئ صورة", "صمم لي صورة", "صمم صورة", "اعملي صورة", "اعمل صورة", "صورة لـ", "توليد صورة",
+		"draw me", "draw a", "draw an", "draw", "generate an image of", "generate image of", "generate image", "create an image of", "create image of",
+	}
+	lower := strings.ToLower(cleaned)
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, p) {
+			cleaned = strings.TrimSpace(cleaned[len(p):])
+			break
+		}
+	}
+	cleaned = strings.Trim(cleaned, ":- \t\r\n")
+	if cleaned == "" {
+		cleaned = text
+	}
+	return cleaned
+}
+
+func truncateString(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
+	}
+	return string(runes[:maxLen]) + "..."
 }
 
 func isNumericString(s string) bool {

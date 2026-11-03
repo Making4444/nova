@@ -335,7 +335,7 @@
             <span class="brand-badge">نوفا سري للغاية</span>
         </div>
         <div id="authHeaderAction" style="display: none;">
-            <a href="/portal-admin-secure/logout" class="btn btn-danger" style="padding: 6px 14px;">تسجيل الخروج</a>
+            <a href="javascript:void(0)" onclick="handleAdminLogout()" class="btn btn-danger" style="padding: 6px 14px;">تسجيل الخروج</a>
         </div>
     </div>
 </header>
@@ -462,8 +462,65 @@
                             <input type="text" id="modelTtsInput" class="form-input" placeholder="gemini-3.8-flash-tts" required>
                         </div>
                         <div class="form-group">
-                            <label>نبرة الصوت (TTS Voice)</label>
-                            <input type="text" id="voiceTtsInput" class="form-input" placeholder="Puck" required>
+                            <label>نبرة الصوت (TTS Voice - اختر أو اكتب)</label>
+                            <select id="voiceTtsSelect" class="form-input" onchange="syncVoiceSelectToInput()" style="background: rgba(15, 23, 42, 0.9); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15);">
+                                <optgroup label="👦 أصوات رجالي وشباب (ولد)">
+                                    <option value="Charon">Charon - ولد / راجل (خشن، رزين، هادئ وعميق) [الافتراضي]</option>
+                                    <option value="Puck">Puck - ولد / شاب (ناعم، مرح، طبيعي وحيوي)</option>
+                                    <option value="Fenrir">Fenrir - راجل (خشن قوي، جهوري وجاد جداً)</option>
+                                    <option value="Orus">Orus - راجل (دافئ، واثق ومستقر)</option>
+                                    <option value="Iapetus">Iapetus - شاب (ودود، شبابي وسلس)</option>
+                                    <option value="Enceladus">Enceladus - راجل (عميق، سينمائي وفخم)</option>
+                                </optgroup>
+                                <optgroup label="👧 أصوات حريمي وبنات (بنت)">
+                                    <option value="Kore">Kore - بنت (ناعم جداً، هادئ ورقيق)</option>
+                                    <option value="Aoede">Aoede - بنت (ناعم، دافئ وحيوي طلق)</option>
+                                    <option value="Leda">Leda - بنت (رصين، هادئ ومتزن)</option>
+                                    <option value="Zephyr">Zephyr - بنت (خفيف، ناعم وسريع)</option>
+                                    <option value="Callirrhoe">Callirrhoe - بنت (راقي، واثق وأكاديمي)</option>
+                                    <option value="Autonoe">Autonoe - بنت (شابة، مشرقة وواضحة)</option>
+                                </optgroup>
+                            </select>
+                            <input type="text" id="voiceTtsInput" class="form-input" placeholder="Charon" style="margin-top: 6px;" required>
+                            <small style="color: var(--text-muted); font-size: 11px; display: block; margin-top: 3px;">اختر من القائمة أو اكتب أي صوت مخصص</small>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+                        <div class="form-group">
+                            <label>🎨 نموذج توليد الصور (Image Model ID)</label>
+                            <input type="text" id="modelImageInput" class="form-input" placeholder="gpt-image-2.5-sunburst" required>
+                            <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">الافتراضي: gpt-image-2.5-sunburst (أو gpt-image-2.5-sunburst-c)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>🌐 رابط المزود للصور (Image Base URL)</label>
+                            <input type="text" id="imageBaseUrlInput" class="form-input" placeholder="https://api.code.signor.ai/v1" required>
+                            <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">الافتراضي: https://api.code.signor.ai/v1</small>
+                        </div>
+                    </div>
+
+                    <!-- Voice Guide Details -->
+                    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px; margin-top: 14px; font-size: 12px; line-height: 1.7;">
+                        <div style="font-weight: 700; color: #a5b4fc; margin-bottom: 6px;">🎙️ دليل تفاصيل وخامات الأصوات المدعومة:</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>
+                                <span style="color: #6ee7b7; font-weight: 700;">أصوات الذكور (ولد):</span><br>
+                                • <b>Charon:</b> ولد/راجل خشن، هادئ ورزين وعميق (المفضل لـ Nova).<br>
+                                • <b>Puck:</b> شاب ناعم، مرح وحيوي وطبيعي جداً.<br>
+                                • <b>Fenrir:</b> راجل نبرة خشنة قوية وجهورية جادة.<br>
+                                • <b>Orus:</b> راجل نبرة دافئة وواثقة ومستقرة.<br>
+                                • <b>Iapetus:</b> شاب نبرة ودودة وشبابية وسلسة.<br>
+                                • <b>Enceladus:</b> راجل نبرة عميقة وفخمة.
+                            </div>
+                            <div>
+                                <span style="color: #f472b6; font-weight: 700;">أصوات الإناث (بنت):</span><br>
+                                • <b>Kore:</b> بنت ناعم جداً، هادئ ورقيق ومريح.<br>
+                                • <b>Aoede:</b> بنت ناعم دافئ ومفعم بالحيوية والطلاقة.<br>
+                                • <b>Leda:</b> بنت رصين، هادئ وأنيق.<br>
+                                • <b>Zephyr:</b> بنت خفيف، ناعم وسريع وعفوي.<br>
+                                • <b>Callirrhoe:</b> بنت راقي، واثق وأكاديمي.<br>
+                                • <b>Autonoe:</b> بنت شابة، مشرقة وواضحة.
+                            </div>
                         </div>
                     </div>
 
@@ -548,9 +605,25 @@
         setTimeout(() => { toast.style.display = 'none'; }, 3000);
     }
 
+    async function adminFetch(url, options = {}) {
+        options.headers = options.headers || {};
+        const token = localStorage.getItem('nova_admin_token');
+        if (token) {
+            options.headers['X-Admin-Token'] = token;
+        }
+        const res = await fetch(url, options);
+        if (res.status === 401) {
+            localStorage.removeItem('nova_admin_token');
+            showLoginForm();
+            alert('انتهت صلاحية جلسة الأدمن أو غير مصرح، يرجى إعادة إدخال كلمة المرور.');
+            throw new Error('Unauthorized');
+        }
+        return res;
+    }
+
     async function checkAdminAuth() {
         try {
-            const res = await fetch('/portal-admin-secure/api/settings');
+            const res = await adminFetch('/portal-admin-secure/api/settings');
             if (res.ok) {
                 const data = await res.json();
                 if (data.success) {
@@ -589,12 +662,27 @@
             });
             const data = await res.json();
             if (data.success) {
+                if (data.token) {
+                    localStorage.setItem('nova_admin_token', data.token);
+                }
                 checkAdminAuth();
             } else {
                 alert(data.error || 'كلمة المرور غير صحيحة');
             }
         } catch (err) {
-            alert('خطأ في الاتصال');
+            alert('خطأ في الاتصال بالسيرفر');
+        }
+    }
+
+    function handleAdminLogout() {
+        localStorage.removeItem('nova_admin_token');
+        window.location.href = '/portal-admin-secure/logout';
+    }
+
+    function syncVoiceSelectToInput() {
+        const sel = document.getElementById('voiceTtsSelect');
+        if (sel) {
+            document.getElementById('voiceTtsInput').value = sel.value;
         }
     }
 
@@ -613,7 +701,23 @@
         document.getElementById('modelSummarizerInput').value = s.model_summarizer || 'gemini-3.8-flash';
 
         document.getElementById('modelTtsInput').value = s.tts_model || 'gemini-3.8-flash-tts';
-        document.getElementById('voiceTtsInput').value = s.tts_voice || 'Charon';
+        const v = s.tts_voice || 'Charon';
+        document.getElementById('voiceTtsInput').value = v;
+        const sel = document.getElementById('voiceTtsSelect');
+        if (sel) {
+            let found = false;
+            for (let i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value.toLowerCase() === v.toLowerCase()) {
+                    sel.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) sel.value = 'Charon';
+        }
+
+        document.getElementById('modelImageInput').value = s.model_image || 'gpt-image-2.5-sunburst';
+        document.getElementById('imageBaseUrlInput').value = s.image_base_url || 'https://api.code.signor.ai/v1';
     }
 
     let currentBalanceMode = 'topup';
@@ -657,11 +761,7 @@
 
     async function loadAdminData() {
         try {
-            const res = await fetch('/portal-admin-secure/api/users');
-            if (res.status === 401) {
-                showLoginForm();
-                return;
-            }
+            const res = await adminFetch('/portal-admin-secure/api/users');
             const data = await res.json();
             if (data.success) {
                 if (document.getElementById('statNetProfit')) {
@@ -740,16 +840,11 @@
         const desc = document.getElementById('topupDescInput').value.trim() || defaultNote;
 
         try {
-            const res = await fetch('/portal-admin-secure/api/topup', {
+            const res = await adminFetch('/portal-admin-secure/api/topup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, amount_egp: amount, description: desc })
             });
-            if (res.status === 401) {
-                alert('انتهت صلاحية جلسة الأدمن أو غير مصرح، يرجى إعادة إدخال كلمة المرور.');
-                showLoginForm();
-                return;
-            }
             const data = await res.json();
             if (data.success) {
                 closeTopupModal();
@@ -759,7 +854,9 @@
                 alert(data.error || 'فشلت العملية');
             }
         } catch (err) {
-            alert('خطأ في الاتصال');
+            if (err.message !== 'Unauthorized') {
+                alert('خطأ في الاتصال بالسيرفر');
+            }
         }
     }
 
@@ -772,7 +869,7 @@
         };
 
         try {
-            const res = await fetch('/portal-admin-secure/api/settings', {
+            const res = await adminFetch('/portal-admin-secure/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -783,7 +880,9 @@
                 showToast('تم حفظ إعدادات التسعير بنجاح!');
             }
         } catch (err) {
-            alert('فشل حفظ الإعدادات');
+            if (err.message !== 'Unauthorized') {
+                alert('فشل حفظ الإعدادات');
+            }
         }
     }
 
@@ -797,11 +896,13 @@
             model_vision: document.getElementById('modelVisionInput').value.trim(),
             model_summarizer: document.getElementById('modelSummarizerInput').value.trim(),
             tts_model: document.getElementById('modelTtsInput').value.trim(),
-            tts_voice: document.getElementById('voiceTtsInput').value.trim()
+            tts_voice: document.getElementById('voiceTtsInput').value.trim(),
+            model_image: document.getElementById('modelImageInput').value.trim(),
+            image_base_url: document.getElementById('imageBaseUrlInput').value.trim()
         };
 
         try {
-            const res = await fetch('/portal-admin-secure/api/settings', {
+            const res = await adminFetch('/portal-admin-secure/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -812,7 +913,9 @@
                 showToast(data.message || 'تم تحديث النماذج وتطبيقها فوراً!');
             }
         } catch (err) {
-            alert('فشل تطبيق النماذج');
+            if (err.message !== 'Unauthorized') {
+                alert('فشل تطبيق النماذج');
+            }
         }
     }
 

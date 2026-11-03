@@ -513,6 +513,28 @@ var sendVoiceNoteTool = toolDefinition{
 	},
 }
 
+var generateImageTool = toolDefinition{
+	Type: "function",
+	Function: functionDef{
+		Name:        "generate_image",
+		Description: "توليد ورسم وتصميم صور عالية الجودة بالذكاء الاصطناعي بناءً على طلب ووصف المستخدم (مثل: 'ارسم لي قطة في الفضاء'، 'صمم لوجو لكافيه'، 'عايز صورة سيارة مستقبلية')",
+		Parameters: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"prompt": map[string]interface{}{
+					"type":        "string",
+					"description": "الوصف التفصيلي الدقيق للصورة المراد رسمها بالإنجليزية أو العربية (كلما كان الوصف ثرياً كانت النتيجة مذهلة)",
+				},
+				"caption": map[string]interface{}{
+					"type":        "string",
+					"description": "رسالة ودية لطيفة بالعامية المصرية ترافق الصورة كـ Caption",
+				},
+			},
+			"required": []string{"prompt"},
+		},
+	},
+}
+
 var browseCurriculumIndexTool = toolDefinition{
 	Type: "function",
 	Function: functionDef{
@@ -663,6 +685,8 @@ func parseInternalToolCall(text string) *internalToolCall {
 							args["problem"] = argStr
 						case "send_voice_note", "voice_note":
 							args["speech_text"] = argStr
+						case "generate_image", "create_image", "draw_image", "draw":
+							args["prompt"] = argStr
 						default:
 							args["input"] = argStr
 						}
@@ -881,6 +905,24 @@ func (c *OpenRouterClient) executeInternalTool(ctx context.Context, call *intern
 		}
 		vBytes, _ := json.Marshal(voicePayload)
 		return string(vBytes), true, false
+
+	case "generate_image", "create_image", "draw_image", "draw":
+		prompt := call.Args["prompt"]
+		if prompt == "" {
+			prompt = call.Args["input"]
+		}
+		caption := call.Args["caption"]
+		if caption == "" {
+			caption = "اتفضل يا غالي، الصورة اهي جاهزة ومخصوصة ليك! 🎨✨"
+		}
+		fmt.Printf("\n[🎨 Internal Image Tool] AI executed generate_image: prompt=%q, caption=%q\n", prompt, caption)
+		imgPayload := map[string]interface{}{
+			"should_reply": true,
+			"reply_text":   caption,
+			"image_prompt": prompt,
+		}
+		iBytes, _ := json.Marshal(imgPayload)
+		return string(iBytes), true, false
 	}
 
 	return fmt.Sprintf("أداة غير معروفة: %s", call.Name), false, false
@@ -960,6 +1002,7 @@ func (c *OpenRouterClient) buildSystemPrompt(payload *trigger.RequestPayload) st
 		sb.WriteString("- لحل مسألة رياضية/برمجية متقدمة: `[TOOL:solve_math_problem problem=\"نص المسألة\"]`\n")
 		sb.WriteString("- للمناهج الدراسية المصرية 2026: `[TOOL:browse_curriculum_index grade=\"الصف\" subject=\"المادة\" keyword=\"الكلمة\"]` أو `[TOOL:read_curriculum_lesson grade=\"الصف\" subject=\"المادة\" file_name=\"الملف\"]`\n")
 		sb.WriteString("- لتسجيل فويس ونطق رد صوتي: `[TOOL:send_voice_note speech_text=\"النص الصوتي المراد نطقه\"]` (أو وضع `\"send_as_voice\": true` في الـ JSON).\n")
+		sb.WriteString("- لتوليد ورسم وتصميم صور عالية الجودة: `[TOOL:generate_image prompt=\"الوصف التفصيلي الدقيق للصورة بالإنجليزية أو العربية\" caption=\"رسالة ودية لطيفة ترافق الصورة\"]` (أو إخراج `\"image_prompt\": \"الوصف\"` في الـ JSON).\n")
 		sb.WriteString("- في المحادثات العادية، الهزار، الدردشة، والأسئلة العامة التي لا تتطلب أدوات: أجب مباشرة وبشكل فوري وطبيعي بدون استدعاء أي أداة!\n")
 	}
 
@@ -1263,7 +1306,7 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 
 	var apiTools []toolDefinition
 	if !isInternal {
-		apiTools = []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool, browseCurriculumIndexTool, readCurriculumLessonTool}
+		apiTools = []toolDefinition{webSearchTool, getWeatherTool, readWebPageTool, calculatorTool, scheduleFollowupTool, solveMathProblemTool, consultCurriculumTool, updateUserMemoryTool, sendVoiceNoteTool, generateImageTool, browseCurriculumIndexTool, readCurriculumLessonTool}
 	}
 
 	for step := 0; step < maxToolSteps; step++ {
@@ -1603,6 +1646,29 @@ func (c *OpenRouterClient) executeConversation(ctx context.Context, model string
 				}
 				vBytes, _ := json.Marshal(voicePayload)
 				return string(vBytes), usedSearch, totalCostUSD, totalTokens, nil
+
+			case "generate_image", "create_image", "draw_image", "draw":
+				var args struct {
+					Prompt  string `json:"prompt"`
+					Caption string `json:"caption"`
+				}
+				_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+				prompt := strings.TrimSpace(args.Prompt)
+				if prompt == "" {
+					prompt = call.Function.Arguments
+				}
+				caption := strings.TrimSpace(args.Caption)
+				if caption == "" {
+					caption = "اتفضل يا غالي، الصورة اهي جاهزة ومخصوصة ليك! 🎨✨"
+				}
+				fmt.Printf("\n[🎨 Image Tool] AI executed generate_image: prompt=%q, caption=%q\n", prompt, caption)
+				imgPayload := map[string]interface{}{
+					"should_reply": true,
+					"reply_text":   caption,
+					"image_prompt": prompt,
+				}
+				b, _ := json.Marshal(imgPayload)
+				return string(b), usedSearch, totalCostUSD, totalTokens, nil
 			}
 		}
 	}

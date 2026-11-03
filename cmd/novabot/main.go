@@ -20,6 +20,7 @@ import (
 	"novabot/internal/dashboard"
 	"novabot/internal/emotion"
 	"novabot/internal/games"
+	"novabot/internal/image"
 	"novabot/internal/memory"
 	"novabot/internal/portal"
 	"novabot/internal/scheduler"
@@ -271,11 +272,31 @@ func main() {
 		eventHandler.SetTTSClient(ttsClient)
 	}
 
+	// Initialize Image Generation Client
+	var imageGen *image.Generator
+	if cfg.SignorAPIKey != "" {
+		imgBaseURL := "https://api.code.signor.ai/v1"
+		imgModel := "gpt-image-2.5-sunburst"
+		if bSettings, err := billingStore.GetSettings(); err == nil && bSettings != nil {
+			if bSettings.ImageBaseURL != "" {
+				imgBaseURL = bSettings.ImageBaseURL
+			}
+			if bSettings.ModelImage != "" {
+				imgModel = bSettings.ModelImage
+			}
+		}
+		imageGen = image.NewGenerator(cfg.SignorAPIKey, imgBaseURL, imgModel)
+		eventHandler.SetImageGenerator(imageGen)
+	}
+
 	// Apply dynamic AI models and TTS configuration from the Billing Store if configured
 	if bSettings, err := billingStore.GetSettings(); err == nil && bSettings != nil {
 		aiClient.SetModels(bSettings.ModelChat, bSettings.ModelMath, bSettings.ModelAcademic, bSettings.ModelVision, bSettings.ModelSummarizer)
 		if ttsClient != nil {
 			ttsClient.SetModelAndVoice(bSettings.TTSModel, bSettings.TTSVoice)
+		}
+		if imageGen != nil {
+			imageGen.SetConfig(bSettings.ImageBaseURL, bSettings.ModelImage)
 		}
 	}
 
@@ -345,6 +366,7 @@ func main() {
 		Store:         billingStore,
 		AIClient:      aiClient,
 		TTSClient:     ttsClient,
+		ImageGen:      imageGen,
 		AdminPassword: cfg.DashboardPassword,
 	})
 	if err := portalServer.Start(); err != nil {

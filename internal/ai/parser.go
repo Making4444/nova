@@ -74,6 +74,7 @@ func ParseResponse(raw string) (*ResponsePayload, error) {
 		if err := json.Unmarshal([]byte(jsonStr), &resp); err == nil {
 			resp.MemoryNote = sanitizeOptionalField(resp.MemoryNote)
 			resp.ReactionEmoji = sanitizeOptionalField(resp.ReactionEmoji)
+			resp.ImagePrompt = sanitizeOptionalField(resp.ImagePrompt)
 
 			// Clean bubbles if provided
 			if len(resp.Bubbles) > 0 {

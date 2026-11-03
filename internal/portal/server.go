@@ -36,12 +36,19 @@ type TTSClientUpdater interface {
 	SetModelAndVoice(model, voice string)
 }
 
+// ImageGenUpdater allows dynamic updating of image generator configuration.
+type ImageGenUpdater interface {
+	SetConfig(baseURL, model string)
+	GetConfig() (string, string)
+}
+
 // ServerConfig holds parameters for the Commercial Web Portal.
 type ServerConfig struct {
 	Port          string
 	Store         *billing.Store
 	AIClient      AIClientUpdater
 	TTSClient     TTSClientUpdater
+	ImageGen      ImageGenUpdater
 	AdminPassword string
 }
 
@@ -51,6 +58,7 @@ type Server struct {
 	store         *billing.Store
 	aiClient      AIClientUpdater
 	ttsClient     TTSClientUpdater
+	imageGen      ImageGenUpdater
 	adminPassword string
 	httpServer    *http.Server
 
@@ -84,6 +92,7 @@ func NewServer(cfg ServerConfig) *Server {
 		store:         cfg.Store,
 		aiClient:      cfg.AIClient,
 		ttsClient:     cfg.TTSClient,
+		imageGen:      cfg.ImageGen,
 		adminPassword: adminPwd,
 		sessions:      make(map[string]sessionData),
 	}
@@ -125,10 +134,7 @@ func generateToken() string {
 
 func (s *Server) createSession(userID int64, username string, isAdmin bool) string {
 	token := generateToken()
-	expiresAt := time.Now().Add(7 * 24 * time.Hour)
-	if isAdmin {
-		expiresAt = time.Now().Add(24 * time.Hour)
-	}
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
 	data := sessionData{
 		UserID:    userID,
@@ -189,19 +195,37 @@ func (s *Server) resolveSession(token string) (sessionData, bool) {
 }
 
 func (s *Server) getSession(r *http.Request) (sessionData, bool) {
-	cookie, err := r.Cookie("nova_portal_session")
-	if err != nil {
+	token := ""
+	if cookie, err := r.Cookie("nova_portal_session"); err == nil && cookie.Value != "" {
+		token = cookie.Value
+	}
+	if token == "" {
+		token = r.Header.Get("X-User-Token")
+	}
+	if token == "" {
 		return sessionData{}, false
 	}
-	return s.resolveSession(cookie.Value)
+	return s.resolveSession(token)
 }
 
 func (s *Server) verifyAdmin(r *http.Request) bool {
-	cookie, err := r.Cookie("nova_admin_session")
-	if err != nil {
+	token := ""
+	if cookie, err := r.Cookie("nova_admin_session"); err == nil && cookie.Value != "" {
+		token = cookie.Value
+	}
+	if token == "" {
+		token = r.Header.Get("X-Admin-Token")
+	}
+	if token == "" {
+		auth := r.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		}
+	}
+	if token == "" {
 		return false
 	}
-	data, ok := s.resolveSession(cookie.Value)
+	data, ok := s.resolveSession(token)
 	return ok && data.IsAdmin
 }
 
@@ -272,12 +296,18 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// Always render index HTML cleanly without automatic redirect loops.
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(indexHTML)
 }
 
 func (s *Server) handleDashboardPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
 		s.clearUserSession(w, r)
@@ -286,6 +316,14 @@ func (s *Server) handleDashboardPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(dashboardHTML)
+}
+
+func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(adminHTML)
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -437,11 +475,6 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 // Secret Admin Panel Handlers
-func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(adminHTML)
-}
-
 func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	s.clearAdminSession(w, r)
 	http.Redirect(w, r, "/portal-admin-secure", http.StatusFound)
@@ -477,7 +510,8 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		Name:     "nova_admin_session",
 		Value:    token,
 		Path:     "/",
-		Expires:  time.Now().Add(24 * time.Hour),
+		Expires:  time.Now().Add(30 * 24 * time.Hour),
+		MaxAge:   86400 * 30,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -485,6 +519,7 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{
 		"success":  true,
 		"is_admin": true,
+		"token":    token,
 	})
 }
 
@@ -594,6 +629,12 @@ func (s *Server) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 		if s.ttsClient != nil {
 			s.ttsClient.SetModelAndVoice(cfg.TTSModel, cfg.TTSVoice)
 			fmt.Printf("[🎙️ Portal Admin] Updated live TTS -> Model: %s, Voice: %s\n", cfg.TTSModel, cfg.TTSVoice)
+		}
+
+		// Dynamically update runtime Image Generator
+		if s.imageGen != nil {
+			s.imageGen.SetConfig(cfg.ImageBaseURL, cfg.ModelImage)
+			fmt.Printf("[🎨 Portal Admin] Updated live Image Gen -> Model: %s, BaseURL: %s\n", cfg.ModelImage, cfg.ImageBaseURL)
 		}
 
 		jsonResponse(w, map[string]interface{}{

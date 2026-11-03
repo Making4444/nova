@@ -197,21 +197,40 @@ func (t *OpenRouterTTS) getGeminiGenerateContentURL() string {
 func getGeminiVoiceName(configuredVoice string) string {
 	v := strings.TrimSpace(configuredVoice)
 	switch strings.ToLower(v) {
+	// Male Voices
 	case "charon", "echo", "onyx", "male", "boy", "ولد", "راجل", "رجالي":
 		return "Charon"
 	case "puck":
 		return "Puck"
-	case "alloy":
-		// User specifically requested alloy as boy/male voice -> map to Charon (masculine expressive boy voice)
-		return "Charon"
 	case "fenrir":
 		return "Fenrir"
-	case "aoede", "shimmer":
-		return "Aoede"
+	case "orus":
+		return "Orus"
+	case "iapetus":
+		return "Iapetus"
+	case "enceladus":
+		return "Enceladus"
+	// Female Voices
 	case "kore", "nova", "female", "بنت":
 		return "Kore"
+	case "aoede", "shimmer":
+		return "Aoede"
+	case "leda":
+		return "Leda"
+	case "zephyr":
+		return "Zephyr"
+	case "callirrhoe":
+		return "Callirrhoe"
+	case "autonoe":
+		return "Autonoe"
+	case "alloy":
+		// Mapped to Charon (masculine expressive boy voice)
+		return "Charon"
 	default:
-		// Default to Charon (expressive male voice for Nova)
+		if v != "" {
+			// Capitalize first letter to match Gemini VoiceName convention
+			return strings.ToUpper(v[:1]) + strings.ToLower(v[1:])
+		}
 		return "Charon"
 	}
 }
