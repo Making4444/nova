@@ -157,8 +157,20 @@ func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
 		delete(s.sessions, cookie.Value)
 		s.sessionsMu.Unlock()
 	}
+	if cookie, err := r.Cookie("nova_admin_session"); err == nil {
+		s.sessionsMu.Lock()
+		delete(s.sessions, cookie.Value)
+		s.sessionsMu.Unlock()
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "nova_portal_session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     "nova_admin_session",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -192,7 +204,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, ok := s.getSession(r); ok {
+	if sess, ok := s.getSession(r); ok && sess.UserID > 0 {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
@@ -203,6 +215,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDashboardPage(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
+		s.clearSession(w, r)
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -395,7 +408,7 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 
 	token := s.createSession(0, "admin", true)
 	http.SetCookie(w, &http.Cookie{
-		Name:     "nova_portal_session",
+		Name:     "nova_admin_session",
 		Value:    token,
 		Path:     "/",
 		Expires:  time.Now().Add(24 * time.Hour),
@@ -404,14 +417,21 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	jsonResponse(w, map[string]interface{}{
-		"success": true,
+		"success":  true,
 		"is_admin": true,
 	})
 }
 
 func (s *Server) verifyAdmin(r *http.Request) bool {
-	sess, ok := s.getSession(r)
-	return ok && sess.IsAdmin
+	cookie, err := r.Cookie("nova_admin_session")
+	if err != nil {
+		return false
+	}
+	s.sessionsMu.RLock()
+	defer s.sessionsMu.RUnlock()
+
+	data, exists := s.sessions[cookie.Value]
+	return exists && data.IsAdmin && time.Now().Before(data.ExpiresAt)
 }
 
 func (s *Server) handleAdminGetUsers(w http.ResponseWriter, r *http.Request) {
