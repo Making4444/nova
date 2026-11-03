@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,5 +107,25 @@ func TestBillingStore_FullFlow(t *testing.T) {
 	upSettings, _ := store.GetSettings()
 	if upSettings.USDEquivalentEGP != 50.0 || upSettings.TTSVoice != "Puck" {
 		t.Errorf("updated settings mismatch: %+v", upSettings)
+	}
+
+	// 9. Test Manual Deduction (Negative Adjustment)
+	balBeforeDeduct := rem
+	newBalAfterDeduct, err := store.AdjustBalance(user.ID, -5.0, "خصم إداري تجريبي")
+	if err != nil {
+		t.Fatalf("AdjustBalance negative failed: %v", err)
+	}
+	expectedAfterDeduct := math.Round((balBeforeDeduct-5.0)*100) / 100
+	if math.Abs(newBalAfterDeduct-expectedAfterDeduct) > 0.001 {
+		t.Errorf("expected balance %f after deduct, got %f", expectedAfterDeduct, newBalAfterDeduct)
+	}
+
+	// 10. Test Finance Stats Calculation
+	stats := store.GetFinanceStats()
+	if stats.TotalQueries < 2 {
+		t.Errorf("expected at least 2 queries in stats, got %d", stats.TotalQueries)
+	}
+	if stats.NetProfitEGP <= 0 {
+		t.Errorf("expected positive net profit, got %f", stats.NetProfitEGP)
 	}
 }

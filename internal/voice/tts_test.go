@@ -43,8 +43,8 @@ func TestNewTTSClient_SignorAI(t *testing.T) {
 }
 
 func TestGeminiVoiceMapping(t *testing.T) {
-	if v := getGeminiVoiceName("alloy"); v != "Puck" {
-		t.Errorf("expected alloy to map to Puck (Male voice), got %s", v)
+	if v := getGeminiVoiceName("alloy"); v != "Charon" {
+		t.Errorf("expected alloy to map to Charon (Male voice), got %s", v)
 	}
 	if v := getGeminiVoiceName("Puck"); v != "Puck" {
 		t.Errorf("expected Puck to remain Puck, got %s", v)

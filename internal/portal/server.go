@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -204,16 +205,8 @@ func (s *Server) verifyAdmin(r *http.Request) bool {
 	return ok && data.IsAdmin
 }
 
-func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
+func (s *Server) clearUserSession(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("nova_portal_session"); err == nil {
-		s.sessionsMu.Lock()
-		delete(s.sessions, cookie.Value)
-		s.sessionsMu.Unlock()
-		if s.store != nil {
-			_ = s.store.DeleteWebSession(cookie.Value)
-		}
-	}
-	if cookie, err := r.Cookie("nova_admin_session"); err == nil {
 		s.sessionsMu.Lock()
 		delete(s.sessions, cookie.Value)
 		s.sessionsMu.Unlock()
@@ -230,6 +223,17 @@ func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+func (s *Server) clearAdminSession(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie("nova_admin_session"); err == nil {
+		s.sessionsMu.Lock()
+		delete(s.sessions, cookie.Value)
+		s.sessionsMu.Unlock()
+		if s.store != nil {
+			_ = s.store.DeleteWebSession(cookie.Value)
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "nova_admin_session",
 		Value:    "",
@@ -257,6 +261,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Secret Admin Panel (Never linked in user navigation)
 	mux.HandleFunc("/portal-admin-secure", s.handleAdminPage)
 	mux.HandleFunc("/portal-admin-secure/login", s.handleAdminLogin)
+	mux.HandleFunc("/portal-admin-secure/logout", s.handleAdminLogout)
 	mux.HandleFunc("/portal-admin-secure/api/users", s.handleAdminGetUsers)
 	mux.HandleFunc("/portal-admin-secure/api/topup", s.handleAdminTopup)
 	mux.HandleFunc("/portal-admin-secure/api/settings", s.handleAdminSettings)
@@ -267,13 +272,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if sess, ok := s.getSession(r); ok {
-		if sess.UserID > 0 {
-			http.Redirect(w, r, "/dashboard", http.StatusFound)
-			return
-		}
-		s.clearSession(w, r)
-	}
+	// Always render index HTML cleanly without automatic redirect loops.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(indexHTML)
 }
@@ -281,7 +280,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDashboardPage(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
-		s.clearSession(w, r)
+		s.clearUserSession(w, r)
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
@@ -366,14 +365,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	s.clearSession(w, r)
+	s.clearUserSession(w, r)
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
-		s.clearSession(w, r)
+		s.clearUserSession(w, r)
 		jsonError(w, "غير مسجل الدخول", http.StatusUnauthorized)
 		return
 	}
@@ -443,6 +442,11 @@ func (s *Server) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(adminHTML)
 }
 
+func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	s.clearAdminSession(w, r)
+	http.Redirect(w, r, "/portal-admin-secure", http.StatusFound)
+}
+
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -501,11 +505,17 @@ func (s *Server) handleAdminGetUsers(w http.ResponseWriter, r *http.Request) {
 		totalBalance += u.BalanceEGP
 	}
 
+	financeStats := s.store.GetFinanceStats()
+
 	jsonResponse(w, map[string]interface{}{
-		"success":       true,
-		"users":         users,
-		"total_users":   len(users),
-		"total_balance": totalBalance,
+		"success":           true,
+		"users":             users,
+		"total_users":       len(users),
+		"total_balance":     totalBalance,
+		"total_revenue":     financeStats.TotalRevenueEGP,
+		"total_server_cost": financeStats.TotalServerCostEGP,
+		"net_profit":        financeStats.NetProfitEGP,
+		"total_queries":     financeStats.TotalQueries,
 	})
 }
 
@@ -525,16 +535,21 @@ func (s *Server) handleAdminTopup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newBal, err := s.store.TopupBalance(req.UserID, req.AmountEGP, req.Description)
+	newBal, err := s.store.AdjustBalance(req.UserID, req.AmountEGP, req.Description)
 	if err != nil {
-		jsonError(w, "فشل شحن الرصيد: "+err.Error(), http.StatusBadRequest)
+		jsonError(w, "فشل تعديل الرصيد: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	actionWord := "إضافة"
+	if req.AmountEGP < 0 {
+		actionWord = "خصم"
 	}
 
 	jsonResponse(w, map[string]interface{}{
 		"success":     true,
 		"new_balance": newBal,
-		"message":     fmt.Sprintf("تم شحن %.2f جنيه بنجاح. الرصيد الجديد: %.2f جنيه", req.AmountEGP, newBal),
+		"message":     fmt.Sprintf("تم %s %.2f جنيه بنجاح. الرصيد الجديد: %.2f جنيه", actionWord, math.Abs(req.AmountEGP), newBal),
 	})
 }
 

@@ -352,10 +352,10 @@ func (s *Store) GetAllUsers() ([]UserSummary, error) {
 	return summaries, nil
 }
 
-// TopupBalance adds credit to a user account and records the transaction.
-func (s *Store) TopupBalance(userID int64, amountEGP float64, description string) (float64, error) {
-	if amountEGP <= 0 {
-		return 0, errors.New("قيمة الشحن يجب أن تكون أكبر من صفر")
+// AdjustBalance changes a user's balance positively (topup) or negatively (deduction) and records the transaction.
+func (s *Store) AdjustBalance(userID int64, amountEGP float64, description string) (float64, error) {
+	if amountEGP == 0 {
+		return 0, errors.New("القيمة يجب ألا تكون صفراً")
 	}
 
 	s.mu.Lock()
@@ -381,13 +381,22 @@ func (s *Store) TopupBalance(userID int64, amountEGP float64, description string
 		return 0, err
 	}
 
+	txType := "topup"
+	if amountEGP < 0 {
+		txType = "manual_deduction"
+	}
+
 	if description == "" {
-		description = fmt.Sprintf("شحن رصيد: +%.2f جنيه", amountEGP)
+		if amountEGP > 0 {
+			description = fmt.Sprintf("إيداع رصيد: +%.2f جنيه", amountEGP)
+		} else {
+			description = fmt.Sprintf("خصم رصيد: %.2f جنيه", amountEGP)
+		}
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO transactions (user_id, amount_egp, type, description, created_at) VALUES (?, ?, 'topup', ?, ?)`,
-		userID, amountEGP, description, time.Now(),
+		`INSERT INTO transactions (user_id, amount_egp, type, description, created_at) VALUES (?, ?, ?, ?, ?)`,
+		userID, amountEGP, txType, description, time.Now(),
 	)
 	if err != nil {
 		return 0, err
@@ -398,6 +407,56 @@ func (s *Store) TopupBalance(userID int64, amountEGP float64, description string
 	}
 
 	return newBal, nil
+}
+
+// TopupBalance adds credit to a user account and records the transaction.
+func (s *Store) TopupBalance(userID int64, amountEGP float64, description string) (float64, error) {
+	return s.AdjustBalance(userID, amountEGP, description)
+}
+
+// PlatformFinanceStats aggregates revenue, server cost, and net profit.
+type PlatformFinanceStats struct {
+	TotalRevenueEGP    float64 `json:"total_revenue_egp"`
+	TotalServerCostEGP float64 `json:"total_server_cost_egp"`
+	NetProfitEGP       float64 `json:"net_profit_egp"`
+	TotalQueries       int     `json:"total_queries"`
+}
+
+// GetFinanceStats calculates real-time revenue, cost, and net profit from deductions.
+func (s *Store) GetFinanceStats() PlatformFinanceStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	settings := s.getSettingsInternal()
+	usdRate := settings.USDEquivalentEGP
+	if usdRate <= 0 {
+		usdRate = 55.0
+	}
+
+	rows, err := s.db.Query(`SELECT amount_egp, cost_usd, type FROM transactions WHERE type IN ('deduction', 'manual_deduction')`)
+	if err != nil {
+		return PlatformFinanceStats{}
+	}
+	defer rows.Close()
+
+	var stats PlatformFinanceStats
+	for rows.Next() {
+		var amt, costUSD float64
+		var txType string
+		if err := rows.Scan(&amt, &costUSD, &txType); err == nil {
+			stats.TotalQueries++
+			rev := math.Abs(amt)
+			costEGP := costUSD * usdRate
+			stats.TotalRevenueEGP += rev
+			stats.TotalServerCostEGP += costEGP
+			stats.NetProfitEGP += (rev - costEGP)
+		}
+	}
+
+	stats.TotalRevenueEGP = math.Round(stats.TotalRevenueEGP*100) / 100
+	stats.TotalServerCostEGP = math.Round(stats.TotalServerCostEGP*100) / 100
+	stats.NetProfitEGP = math.Round(stats.NetProfitEGP*100) / 100
+	return stats
 }
 
 // DeductBalance deducts the calculated request cost plus fixed margin from user balance.
@@ -565,7 +624,7 @@ func (s *Store) SaveWebSession(token string, userID int64, username string, isAd
 		INSERT INTO web_sessions (token, user_id, username, is_admin, expires_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id, username=excluded.username, is_admin=excluded.is_admin, expires_at=excluded.expires_at
-	`, token, userID, username, isAdmin, expiresAt)
+	`, token, userID, username, isAdmin, expiresAt.UTC().Format(time.RFC3339))
 	return err
 }
 
@@ -575,10 +634,39 @@ func (s *Store) GetWebSession(token string) (WebSessionData, bool) {
 	defer s.mu.RUnlock()
 
 	var data WebSessionData
+	var expRaw string
 	row := s.db.QueryRow(`SELECT token, user_id, username, is_admin, expires_at FROM web_sessions WHERE token = ?`, token)
-	if err := row.Scan(&data.Token, &data.UserID, &data.Username, &data.IsAdmin, &data.ExpiresAt); err != nil {
+	if err := row.Scan(&data.Token, &data.UserID, &data.Username, &data.IsAdmin, &expRaw); err != nil {
 		return WebSessionData{}, false
 	}
+
+	// Clean monotonic clock info if present (e.g. ' m=+86426.790810394')
+	if idx := strings.Index(expRaw, " m="); idx != -1 {
+		expRaw = expRaw[:idx]
+	}
+	expRaw = strings.TrimSpace(expRaw)
+
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999 +0000 UTC",
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05",
+	}
+	var expiresAt time.Time
+	parsed := false
+	for _, f := range formats {
+		if t, err := time.Parse(f, expRaw); err == nil {
+			expiresAt = t
+			parsed = true
+			break
+		}
+	}
+	if !parsed {
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+	data.ExpiresAt = expiresAt
 
 	if time.Now().After(data.ExpiresAt) {
 		go func(tok string) {
@@ -756,11 +844,13 @@ func (s *Store) UpdateSettings(cfg *PlatformSettings) error {
 		return errors.New("nil settings")
 	}
 
-	if cfg.USDtoEGPRate > 0 {
+	if cfg.USDEquivalentEGP > 0 {
+		cfg.USDtoEGPRate = cfg.USDEquivalentEGP
+	} else if cfg.USDtoEGPRate > 0 {
 		cfg.USDEquivalentEGP = cfg.USDtoEGPRate
-	}
-	if cfg.USDEquivalentEGP <= 0 {
+	} else {
 		cfg.USDEquivalentEGP = 55.0
+		cfg.USDtoEGPRate = 55.0
 	}
 
 	s.mu.Lock()

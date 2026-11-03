@@ -335,7 +335,7 @@
             <span class="brand-badge">نوفا سري للغاية</span>
         </div>
         <div id="authHeaderAction" style="display: none;">
-            <a href="/api/logout" class="btn btn-danger" style="padding: 6px 14px;">تسجيل الخروج</a>
+            <a href="/portal-admin-secure/logout" class="btn btn-danger" style="padding: 6px 14px;">تسجيل الخروج</a>
         </div>
     </div>
 </header>
@@ -359,21 +359,41 @@
 
         <!-- Stats Overview -->
         <div class="stats-grid">
+            <div class="stat-card" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.45);">
+                <div class="stat-title" style="color: #6ee7b7; font-weight: 700;">💰 إجمالي أرباحك الصافية (Net Profit)</div>
+                <div class="stat-val" id="statNetProfit" style="color: #10b981;">0.00 <span style="font-size: 16px; color: #6ee7b7;">ج.م</span></div>
+                <small style="color: #a7f3d0; font-size: 11px; margin-top: 4px; display: block;">يزداد تلقائياً لحظياً مع كل سؤال وفويس نوت</small>
+            </div>
             <div class="stat-card">
-                <div class="stat-title">إجمالي المستخدمين المسجلين</div>
+                <div class="stat-title">⚡ تكلفة السيرفر الفعلية (Server Cost)</div>
+                <div class="stat-val" id="statServerCost">0.00 <span style="font-size: 16px; color: #f87171;">ج.م</span></div>
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">ما يخصمه مزود الذكاء الاصطناعي</small>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">📈 إجمالي الاستهلاك المخصوم</div>
+                <div class="stat-val" id="statTotalRevenue">0.00 <span style="font-size: 16px; color: #60a5fa;">ج.م</span></div>
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">إجمالي المبالغ المخصومة من المستخدمين</small>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">💬 إجمالي الأسئلة المنفذة</div>
+                <div class="stat-val" id="statTotalQueries">0</div>
+                <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px; display: block;">الردود النصية والفويسات المعالجة</small>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">👥 المستخدمين المسجلين</div>
                 <div class="stat-val" id="statUsersCount">0</div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">إجمالي الرصيد القائم في النظام</div>
+                <div class="stat-title">💳 إجمالي أرصدة المستخدمين</div>
                 <div class="stat-val" id="statTotalBalance">0.00 <span style="font-size: 16px; color: var(--accent);">ج.م</span></div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">سعر تحويل الدولار الحالي</div>
+                <div class="stat-title">💵 سعر صرف الدولار</div>
                 <div class="stat-val" id="statUsdRate">55.00 <span style="font-size: 16px; color: #a5b4fc;">ج.م</span></div>
             </div>
             <div class="stat-card">
-                <div class="stat-title">هامش الربح الثابت لكل سؤال</div>
-                <div class="stat-val" id="statMarginRate">0.10 <span style="font-size: 16px; color: #f59e0b;">ج.م (10 قروش)</span></div>
+                <div class="stat-title">🎯 هامش الربح الثابت / سؤال</div>
+                <div class="stat-val" id="statMarginRate">0.10 <span style="font-size: 16px; color: #f59e0b;">ج.م</span></div>
             </div>
         </div>
 
@@ -485,7 +505,7 @@
 <div class="modal-overlay" id="topupModal">
     <div class="modal-box">
         <div class="modal-header">
-            <h3>شحن رصيد مستخدم</h3>
+            <h3 id="modalBalanceTitle">شحن رصيد مستخدم</h3>
             <button class="btn-close" onclick="closeTopupModal()">&times;</button>
         </div>
         <form onsubmit="handleTopupSubmit(event)">
@@ -494,15 +514,24 @@
                 <label>اسم المستخدم</label>
                 <input type="text" id="topupUsernameDisplay" class="form-input" readonly style="opacity: 0.8;">
             </div>
+
             <div class="form-group">
-                <label>مبلغ الشحن (جنيه مصري)</label>
-                <input type="number" step="0.5" min="1" id="topupAmountInput" class="form-input" placeholder="مثال: 50 أو 100" required>
+                <label>نوع العملية المطلوبة</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button type="button" id="btnModeTopup" class="btn btn-accent" style="padding: 10px; font-size: 13px;" onclick="setBalanceMode('topup')">➕ إضافة رصيد (شحن)</button>
+                    <button type="button" id="btnModeDeduct" class="btn" style="padding: 10px; font-size: 13px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);" onclick="setBalanceMode('deduct')">➖ خصم رصيد (تخفيض)</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label id="lblAmountTitle">مبلغ الشحن (جنيه مصري)</label>
+                <input type="number" step="0.01" min="0.01" id="topupAmountInput" class="form-input" placeholder="مثال: 50 أو 100" required>
             </div>
             <div class="form-group">
                 <label>بيان العملية / ملاحظة (اختياري)</label>
-                <input type="text" id="topupDescInput" class="form-input" placeholder="تحويل إنستاباي / فودافون كاش">
+                <input type="text" id="topupDescInput" class="form-input" placeholder="مثال: شحن رصيد نقدي / خصم رصيد إداري">
             </div>
-            <button type="submit" class="btn btn-accent btn-full">تأكيد إضافة الرصيد</button>
+            <button type="submit" id="btnConfirmBalance" class="btn btn-accent btn-full">تأكيد إضافة الرصيد (+)</button>
         </form>
     </div>
 </div>
@@ -587,6 +616,45 @@
         document.getElementById('voiceTtsInput').value = s.tts_voice || 'Charon';
     }
 
+    let currentBalanceMode = 'topup';
+
+    function setBalanceMode(mode) {
+        currentBalanceMode = mode;
+        const btnTopup = document.getElementById('btnModeTopup');
+        const btnDeduct = document.getElementById('btnModeDeduct');
+        const title = document.getElementById('modalBalanceTitle');
+        const lbl = document.getElementById('lblAmountTitle');
+        const btnConfirm = document.getElementById('btnConfirmBalance');
+
+        if (mode === 'deduct') {
+            btnTopup.style.background = 'rgba(255, 255, 255, 0.08)';
+            btnTopup.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+            btnTopup.style.color = '#cbd5e1';
+
+            btnDeduct.style.background = 'rgba(239, 68, 68, 0.25)';
+            btnDeduct.style.borderColor = '#ef4444';
+            btnDeduct.style.color = '#fca5a5';
+
+            title.innerText = 'خصم رصيد من مستخدم';
+            lbl.innerText = 'مبلغ الخصم (جنيه مصري)';
+            btnConfirm.innerText = 'تأكيد خصم الرصيد (-)';
+            btnConfirm.style.background = '#dc2626';
+        } else {
+            btnTopup.style.background = 'var(--accent)';
+            btnTopup.style.borderColor = 'var(--accent)';
+            btnTopup.style.color = '#000';
+
+            btnDeduct.style.background = 'rgba(239, 68, 68, 0.15)';
+            btnDeduct.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+            btnDeduct.style.color = '#f87171';
+
+            title.innerText = 'شحن رصيد مستخدم';
+            lbl.innerText = 'مبلغ الشحن (جنيه مصري)';
+            btnConfirm.innerText = 'تأكيد إضافة الرصيد (+)';
+            btnConfirm.style.background = 'var(--accent)';
+        }
+    }
+
     async function loadAdminData() {
         try {
             const res = await fetch('/portal-admin-secure/api/users');
@@ -596,8 +664,20 @@
             }
             const data = await res.json();
             if (data.success) {
-                document.getElementById('statUsersCount').innerText = data.total_users;
-                document.getElementById('statTotalBalance').innerText = data.total_balance.toFixed(2);
+                if (document.getElementById('statNetProfit')) {
+                    document.getElementById('statNetProfit').innerHTML = (data.net_profit || 0).toFixed(2) + ' <span style="font-size: 16px; color: #6ee7b7;">ج.م</span>';
+                }
+                if (document.getElementById('statServerCost')) {
+                    document.getElementById('statServerCost').innerHTML = (data.total_server_cost || 0).toFixed(2) + ' <span style="font-size: 16px; color: #f87171;">ج.م</span>';
+                }
+                if (document.getElementById('statTotalRevenue')) {
+                    document.getElementById('statTotalRevenue').innerHTML = (data.total_revenue || 0).toFixed(2) + ' <span style="font-size: 16px; color: #60a5fa;">ج.م</span>';
+                }
+                if (document.getElementById('statTotalQueries')) {
+                    document.getElementById('statTotalQueries').innerText = data.total_queries || 0;
+                }
+                document.getElementById('statUsersCount').innerText = data.total_users || 0;
+                document.getElementById('statTotalBalance').innerHTML = (data.total_balance || 0).toFixed(2) + ' <span style="font-size: 16px; color: var(--accent);">ج.م</span>';
                 renderUsersTable(data.users);
             }
         } catch (err) {
@@ -622,8 +702,9 @@
                     <td><code style="background: rgba(16, 185, 129, 0.15); color: var(--accent); padding: 4px 8px; border-radius: 6px; font-weight: 800; letter-spacing: 1.5px; font-size: 14px;">${u.link_code || '-'}</code></td>
                     <td style="font-weight: 800; color: var(--accent); direction: ltr; text-align: right;">${u.balance_egp.toFixed(2)} ج.م</td>
                     <td>${dateStr}</td>
-                    <td class="action-cell">
-                        <button class="btn btn-accent" style="padding: 6px 12px; font-size: 13px;" onclick="openTopupModal(${u.id}, '${u.username}')">💳 شحن رصيد</button>
+                    <td class="action-cell" style="white-space: nowrap;">
+                        <button class="btn btn-accent" style="padding: 6px 10px; font-size: 12px; margin-left: 6px;" onclick="openTopupModal(${u.id}, '${u.username}', 'topup')">➕ شحن</button>
+                        <button class="btn" style="padding: 6px 10px; font-size: 12px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);" onclick="openTopupModal(${u.id}, '${u.username}', 'deduct')">➖ خصم</button>
                     </td>
                 </tr>
             `;
@@ -631,11 +712,12 @@
         tbody.innerHTML = html;
     }
 
-    function openTopupModal(id, username) {
+    function openTopupModal(id, username, defaultMode = 'topup') {
         document.getElementById('topupUserId').value = id;
         document.getElementById('topupUsernameDisplay').value = username;
         document.getElementById('topupAmountInput').value = '';
         document.getElementById('topupDescInput').value = '';
+        setBalanceMode(defaultMode);
         document.getElementById('topupModal').classList.add('active');
     }
 
@@ -646,8 +728,16 @@
     async function handleTopupSubmit(e) {
         e.preventDefault();
         const userId = parseInt(document.getElementById('topupUserId').value);
-        const amount = parseFloat(document.getElementById('topupAmountInput').value);
-        const desc = document.getElementById('topupDescInput').value.trim() || 'إيداع إداري مباشر';
+        let amount = parseFloat(document.getElementById('topupAmountInput').value);
+        if (isNaN(amount) || amount <= 0) {
+            alert('يرجى كتابة مبلغ صحيح أكبر من صفر');
+            return;
+        }
+        if (currentBalanceMode === 'deduct') {
+            amount = -Math.abs(amount);
+        }
+        const defaultNote = currentBalanceMode === 'deduct' ? 'خصم إداري مباشر' : 'شحن إداري مباشر';
+        const desc = document.getElementById('topupDescInput').value.trim() || defaultNote;
 
         try {
             const res = await fetch('/portal-admin-secure/api/topup', {
@@ -666,7 +756,7 @@
                 showToast(data.message);
                 loadAdminData();
             } else {
-                alert(data.error || 'فشل الشحن');
+                alert(data.error || 'فشلت العملية');
             }
         } catch (err) {
             alert('خطأ في الاتصال');
@@ -726,8 +816,13 @@
         }
     }
 
-    // Initial check
+    // Initial check and auto-refresh stats every 15s
     checkAdminAuth();
+    setInterval(() => {
+        if (document.getElementById('adminDashboardContent').style.display !== 'none') {
+            loadAdminData();
+        }
+    }, 15000);
 </script>
 
 </body>
