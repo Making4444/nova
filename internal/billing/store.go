@@ -424,7 +424,8 @@ type PlatformFinanceStats struct {
 	TotalQueries       int     `json:"total_queries"`
 }
 
-// GetFinanceStats calculates real-time revenue, cost, and net profit from deductions.
+// GetFinanceStats calculates real-time revenue, cost, and net profit strictly from actual user AI queries (deduction).
+// Manual topups and manual balance adjustments are not counted as AI consumption or profit.
 func (s *Store) GetFinanceStats() PlatformFinanceStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -435,7 +436,7 @@ func (s *Store) GetFinanceStats() PlatformFinanceStats {
 		usdRate = 55.0
 	}
 
-	rows, err := s.db.Query(`SELECT amount_egp, cost_usd, type FROM transactions WHERE type IN ('deduction', 'manual_deduction')`)
+	rows, err := s.db.Query(`SELECT amount_egp, cost_usd FROM transactions WHERE type = 'deduction'`)
 	if err != nil {
 		return PlatformFinanceStats{}
 	}
@@ -444,8 +445,7 @@ func (s *Store) GetFinanceStats() PlatformFinanceStats {
 	var stats PlatformFinanceStats
 	for rows.Next() {
 		var amt, costUSD float64
-		var txType string
-		if err := rows.Scan(&amt, &costUSD, &txType); err == nil {
+		if err := rows.Scan(&amt, &costUSD); err == nil {
 			stats.TotalQueries++
 			rev := math.Abs(amt)
 			costEGP := costUSD * usdRate

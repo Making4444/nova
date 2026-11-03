@@ -120,10 +120,10 @@ func TestBillingStore_FullFlow(t *testing.T) {
 		t.Errorf("expected balance %f after deduct, got %f", expectedAfterDeduct, newBalAfterDeduct)
 	}
 
-	// 10. Test Finance Stats Calculation
+	// 10. Test Finance Stats Calculation (Only real AI query deductions should be counted)
 	stats := store.GetFinanceStats()
-	if stats.TotalQueries < 2 {
-		t.Errorf("expected at least 2 queries in stats, got %d", stats.TotalQueries)
+	if stats.TotalQueries != 1 {
+		t.Errorf("expected exactly 1 query in stats (manual deduction excluded), got %d", stats.TotalQueries)
 	}
 	if stats.NetProfitEGP <= 0 {
 		t.Errorf("expected positive net profit, got %f", stats.NetProfitEGP)
