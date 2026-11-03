@@ -124,15 +124,67 @@ func generateToken() string {
 
 func (s *Server) createSession(userID int64, username string, isAdmin bool) string {
 	token := generateToken()
-	s.sessionsMu.Lock()
-	defer s.sessionsMu.Unlock()
-	s.sessions[token] = sessionData{
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	if isAdmin {
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
+	data := sessionData{
 		UserID:    userID,
 		Username:  username,
 		IsAdmin:   isAdmin,
-		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+		ExpiresAt: expiresAt,
+	}
+
+	s.sessionsMu.Lock()
+	s.sessions[token] = data
+	s.sessionsMu.Unlock()
+
+	if s.store != nil {
+		_ = s.store.SaveWebSession(token, userID, username, isAdmin, expiresAt)
 	}
 	return token
+}
+
+func (s *Server) resolveSession(token string) (sessionData, bool) {
+	if token == "" {
+		return sessionData{}, false
+	}
+
+	s.sessionsMu.RLock()
+	data, exists := s.sessions[token]
+	s.sessionsMu.RUnlock()
+
+	if exists {
+		if time.Now().After(data.ExpiresAt) {
+			s.sessionsMu.Lock()
+			delete(s.sessions, token)
+			s.sessionsMu.Unlock()
+			if s.store != nil {
+				_ = s.store.DeleteWebSession(token)
+			}
+			return sessionData{}, false
+		}
+		return data, true
+	}
+
+	if s.store != nil {
+		dbData, found := s.store.GetWebSession(token)
+		if found {
+			sess := sessionData{
+				UserID:    dbData.UserID,
+				Username:  dbData.Username,
+				IsAdmin:   dbData.IsAdmin,
+				ExpiresAt: dbData.ExpiresAt,
+			}
+			s.sessionsMu.Lock()
+			s.sessions[token] = sess
+			s.sessionsMu.Unlock()
+			return sess, true
+		}
+	}
+
+	return sessionData{}, false
 }
 
 func (s *Server) getSession(r *http.Request) (sessionData, bool) {
@@ -140,15 +192,16 @@ func (s *Server) getSession(r *http.Request) (sessionData, bool) {
 	if err != nil {
 		return sessionData{}, false
 	}
-	token := cookie.Value
-	s.sessionsMu.RLock()
-	defer s.sessionsMu.RUnlock()
+	return s.resolveSession(cookie.Value)
+}
 
-	data, exists := s.sessions[token]
-	if !exists || time.Now().After(data.ExpiresAt) {
-		return sessionData{}, false
+func (s *Server) verifyAdmin(r *http.Request) bool {
+	cookie, err := r.Cookie("nova_admin_session")
+	if err != nil {
+		return false
 	}
-	return data, true
+	data, ok := s.resolveSession(cookie.Value)
+	return ok && data.IsAdmin
 }
 
 func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
@@ -156,11 +209,17 @@ func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
 		s.sessionsMu.Lock()
 		delete(s.sessions, cookie.Value)
 		s.sessionsMu.Unlock()
+		if s.store != nil {
+			_ = s.store.DeleteWebSession(cookie.Value)
+		}
 	}
 	if cookie, err := r.Cookie("nova_admin_session"); err == nil {
 		s.sessionsMu.Lock()
 		delete(s.sessions, cookie.Value)
 		s.sessionsMu.Unlock()
+		if s.store != nil {
+			_ = s.store.DeleteWebSession(cookie.Value)
+		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "nova_portal_session",
@@ -339,11 +398,6 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGenerateLinkCode(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := s.getSession(r)
 	if !ok || sess.UserID <= 0 {
 		jsonError(w, "غير مسجل الدخول", http.StatusUnauthorized)
@@ -352,14 +406,14 @@ func (s *Server) handleGenerateLinkCode(w http.ResponseWriter, r *http.Request) 
 
 	code, err := s.store.GenerateLinkCode(sess.UserID)
 	if err != nil {
-		jsonError(w, "تعذر إنشاء كود الربط", http.StatusInternalServerError)
+		jsonError(w, "تعذر جلب كود الربط", http.StatusInternalServerError)
 		return
 	}
 
 	jsonResponse(w, map[string]interface{}{
 		"success":    true,
 		"code":       code,
-		"expires_in": "15 دقيقة",
+		"expires_in": "كود دائم وثابت لحسابك",
 		"bot_number": "01202172699",
 	})
 }
@@ -428,18 +482,6 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		"success":  true,
 		"is_admin": true,
 	})
-}
-
-func (s *Server) verifyAdmin(r *http.Request) bool {
-	cookie, err := r.Cookie("nova_admin_session")
-	if err != nil {
-		return false
-	}
-	s.sessionsMu.RLock()
-	defer s.sessionsMu.RUnlock()
-
-	data, exists := s.sessions[cookie.Value]
-	return exists && data.IsAdmin && time.Now().Before(data.ExpiresAt)
 }
 
 func (s *Server) handleAdminGetUsers(w http.ResponseWriter, r *http.Request) {

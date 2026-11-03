@@ -24,6 +24,7 @@ type User struct {
 	Username     string    `json:"username"`
 	PasswordHash string    `json:"-"`
 	BalanceEGP   float64   `json:"balance_egp"`
+	LinkCode     string    `json:"link_code"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -168,10 +169,40 @@ func (s *Store) initSchema() error {
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS web_sessions (
+		token TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL DEFAULT 0,
+		username TEXT NOT NULL DEFAULT '',
+		is_admin BOOLEAN NOT NULL DEFAULT 0,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return err
+	}
+
+	// Migrate users table with permanent link_code column
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN link_code TEXT`)
+	_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_link_code ON users(link_code)`)
+
+	// Populate permanent link_code for any users that don't have one
+	rows, err := s.db.Query(`SELECT id FROM users WHERE link_code IS NULL OR link_code = ''`)
+	if err == nil {
+		var ids []int64
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+		for _, id := range ids {
+			code := s.generateUniqueLinkCode()
+			_, _ = s.db.Exec(`UPDATE users SET link_code = ? WHERE id = ?`, code, id)
+		}
 	}
 
 	// Seed default settings if empty
@@ -204,7 +235,23 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// RegisterUser creates a new user account with initial zero balance.
+// generateUniqueLinkCode creates a unique 6-digit numeric permanent link code.
+func (s *Store) generateUniqueLinkCode() string {
+	for {
+		n, err := rand.Int(rand.Reader, big.NewInt(900000))
+		if err != nil {
+			return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+		}
+		code := fmt.Sprintf("%06d", n.Int64()+100000)
+		var count int
+		_ = s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE link_code = ?`, code).Scan(&count)
+		if count == 0 {
+			return code
+		}
+	}
+}
+
+// RegisterUser creates a new user account with initial zero balance and permanent link code.
 func (s *Store) RegisterUser(username, password string) (*User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
@@ -217,10 +264,11 @@ func (s *Store) RegisterUser(username, password string) (*User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	linkCode := s.generateUniqueLinkCode()
 	hash := HashPassword(password)
 	res, err := s.db.Exec(
-		`INSERT INTO users (username, password_hash, balance_egp, created_at, updated_at) VALUES (?, ?, 0.0, ?, ?)`,
-		username, hash, time.Now(), time.Now(),
+		`INSERT INTO users (username, password_hash, balance_egp, link_code, created_at, updated_at) VALUES (?, ?, 0.0, ?, ?, ?)`,
+		username, hash, linkCode, time.Now(), time.Now(),
 	)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
@@ -234,6 +282,7 @@ func (s *Store) RegisterUser(username, password string) (*User, error) {
 		ID:         id,
 		Username:   username,
 		BalanceEGP: 0.0,
+		LinkCode:   linkCode,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}, nil
@@ -247,9 +296,9 @@ func (s *Store) AuthenticateUser(username, password string) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	row := s.db.QueryRow(`SELECT id, username, password_hash, balance_egp, created_at, updated_at FROM users WHERE username = ?`, username)
+	row := s.db.QueryRow(`SELECT id, username, password_hash, balance_egp, COALESCE(link_code, ''), created_at, updated_at FROM users WHERE username = ?`, username)
 	var u User
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.BalanceEGP, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("اسم المستخدم أو كلمة المرور غير صحيحة")
 		}
@@ -268,9 +317,9 @@ func (s *Store) GetUserByID(id int64) (*User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	row := s.db.QueryRow(`SELECT id, username, balance_egp, created_at, updated_at FROM users WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT id, username, balance_egp, COALESCE(link_code, ''), created_at, updated_at FROM users WHERE id = ?`, id)
 	var u User
-	if err := row.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -281,7 +330,7 @@ func (s *Store) GetAllUsers() ([]UserSummary, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	rows, err := s.db.Query(`SELECT id, username, balance_egp, created_at, updated_at FROM users ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT id, username, balance_egp, COALESCE(link_code, ''), created_at, updated_at FROM users ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +339,7 @@ func (s *Store) GetAllUsers() ([]UserSummary, error) {
 	var summaries []UserSummary
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.CreatedAt, &u.UpdatedAt); err == nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt); err == nil {
 			summaries = append(summaries, UserSummary{User: u})
 		}
 	}
@@ -415,30 +464,24 @@ func (s *Store) DeductBalance(userID int64, chatID string, costUSD float64, toke
 	return deductedEGP, newBal, nil
 }
 
-// GenerateLinkCode generates a unique 6-digit OTP code valid for 15 minutes.
+// GenerateLinkCode retrieves the user's permanent link code.
 func (s *Store) GenerateLinkCode(userID int64) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Clean expired or unused codes for this user
-	_, _ = s.db.Exec(`DELETE FROM link_codes WHERE user_id = ? OR expires_at < ?`, userID, time.Now())
-
-	n, err := rand.Int(rand.Reader, big.NewInt(900000))
-	if err != nil {
+	var code string
+	row := s.db.QueryRow(`SELECT COALESCE(link_code, '') FROM users WHERE id = ?`, userID)
+	if err := row.Scan(&code); err != nil {
 		return "", err
 	}
-	code := fmt.Sprintf("%06d", n.Int64()+100000)
-
-	expiresAt := time.Now().Add(15 * time.Minute)
-	_, err = s.db.Exec(`INSERT INTO link_codes (code, user_id, expires_at, used) VALUES (?, ?, ?, 0)`, code, userID, expiresAt)
-	if err != nil {
-		return "", err
+	if code == "" {
+		code = s.generateUniqueLinkCode()
+		_, _ = s.db.Exec(`UPDATE users SET link_code = ? WHERE id = ?`, code, userID)
 	}
-
 	return code, nil
 }
 
-// VerifyAndLinkCode checks if a code is valid, links the chat to the user, and marks the code as used.
+// VerifyAndLinkCode checks if a code matches a user's permanent link_code (or legacy code) and links the chat.
 func (s *Store) VerifyAndLinkCode(code, chatID, chatType, chatName string) (*User, error) {
 	code = strings.TrimSpace(code)
 	chatID = strings.TrimSpace(chatID)
@@ -449,54 +492,32 @@ func (s *Store) VerifyAndLinkCode(code, chatID, chatType, chatName string) (*Use
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var userID int64
-	var expiresAt time.Time
-	var used int
-
-	row := s.db.QueryRow(`SELECT user_id, expires_at, used FROM link_codes WHERE code = ?`, code)
-	if err := row.Scan(&userID, &expiresAt, &used); err != nil {
-		return nil, errors.New("كود الربط غير صحيح أو غير موجود")
-	}
-
-	if used == 1 {
-		return nil, errors.New("كود الربط مستخدم من قبل")
-	}
-
-	if time.Now().After(expiresAt) {
-		return nil, errors.New("انتهت صلاحية كود الربط، يرجى إنشاء كود جديد من الموقع")
-	}
-
-	tx, err := s.db.Begin()
+	var u User
+	// Check permanent link_code on users table first
+	row := s.db.QueryRow(`SELECT id, username, balance_egp, COALESCE(link_code, ''), created_at, updated_at FROM users WHERE link_code = ?`, code)
+	err := row.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
-		return nil, err
+		// Fallback check legacy link_codes table
+		var legacyUserID int64
+		legacyRow := s.db.QueryRow(`SELECT user_id FROM link_codes WHERE code = ?`, code)
+		if legacyErr := legacyRow.Scan(&legacyUserID); legacyErr != nil {
+			return nil, errors.New("كود الربط غير صحيح أو غير مسجل")
+		}
+		userRow := s.db.QueryRow(`SELECT id, username, balance_egp, COALESCE(link_code, ''), created_at, updated_at FROM users WHERE id = ?`, legacyUserID)
+		if userErr := userRow.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt); userErr != nil {
+			return nil, errors.New("المستخدم غير موجود")
+		}
 	}
-	defer tx.Rollback()
 
-	// Mark code as used
-	_, err = tx.Exec(`UPDATE link_codes SET used = 1 WHERE code = ?`, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Insert or replace linked chat
-	_, err = tx.Exec(
+	// Link chat to user
+	_, err = s.db.Exec(
 		`INSERT INTO linked_chats (user_id, chat_id, chat_type, chat_name, created_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(chat_id) DO UPDATE SET user_id=excluded.user_id, chat_name=excluded.chat_name`,
-		userID, chatID, chatType, chatName, time.Now(),
+		u.ID, chatID, chatType, chatName, time.Now(),
 	)
 	if err != nil {
-		return nil, err
-	}
-
-	var u User
-	userRow := tx.QueryRow(`SELECT id, username, balance_egp, created_at, updated_at FROM users WHERE id = ?`, userID)
-	if err := userRow.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.CreatedAt, &u.UpdatedAt); err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to link chat: %w", err)
 	}
 
 	return &u, nil
@@ -514,17 +535,69 @@ func (s *Store) GetLinkedUserForChat(chatID string) (*User, error) {
 
 	var u User
 	row := s.db.QueryRow(`
-		SELECT u.id, u.username, u.balance_egp, u.created_at, u.updated_at
+		SELECT u.id, u.username, u.balance_egp, COALESCE(u.link_code, ''), u.created_at, u.updated_at
 		FROM users u
 		JOIN linked_chats lc ON u.id = lc.user_id
 		WHERE lc.chat_id = ?
 	`, chatID)
 
-	if err := row.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.BalanceEGP, &u.LinkCode, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 
 	return &u, nil
+}
+
+// WebSessionData represents session state stored in SQLite for reboot persistence.
+type WebSessionData struct {
+	Token     string    `json:"token"`
+	UserID    int64     `json:"user_id"`
+	Username  string    `json:"username"`
+	IsAdmin   bool      `json:"is_admin"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// SaveWebSession saves or updates a web session token in SQLite.
+func (s *Store) SaveWebSession(token string, userID int64, username string, isAdmin bool, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`
+		INSERT INTO web_sessions (token, user_id, username, is_admin, expires_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id, username=excluded.username, is_admin=excluded.is_admin, expires_at=excluded.expires_at
+	`, token, userID, username, isAdmin, expiresAt)
+	return err
+}
+
+// GetWebSession retrieves a session from SQLite if not expired.
+func (s *Store) GetWebSession(token string) (WebSessionData, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var data WebSessionData
+	row := s.db.QueryRow(`SELECT token, user_id, username, is_admin, expires_at FROM web_sessions WHERE token = ?`, token)
+	if err := row.Scan(&data.Token, &data.UserID, &data.Username, &data.IsAdmin, &data.ExpiresAt); err != nil {
+		return WebSessionData{}, false
+	}
+
+	if time.Now().After(data.ExpiresAt) {
+		go func(tok string) {
+			s.mu.Lock()
+			_, _ = s.db.Exec(`DELETE FROM web_sessions WHERE token = ?`, tok)
+			s.mu.Unlock()
+		}(token)
+		return WebSessionData{}, false
+	}
+
+	return data, true
+}
+
+// DeleteWebSession removes a session from SQLite.
+func (s *Store) DeleteWebSession(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`DELETE FROM web_sessions WHERE token = ?`, token)
+	return err
 }
 
 // GetLinkedChatsForUser returns all WhatsApp chats linked to a specific user.

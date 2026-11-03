@@ -401,16 +401,6 @@
                         </small>
                     </div>
 
-                    <div class="form-group">
-                        <label>حساب إنستاباي للشحن (يظهر للمستخدمين)</label>
-                        <input type="text" id="instapayInput" class="form-input">
-                    </div>
-
-                    <div class="form-group">
-                        <label>رقم فودافون كاش للشحن (يظهر للمستخدمين)</label>
-                        <input type="text" id="vodafoneInput" class="form-input">
-                    </div>
-
                     <button type="submit" class="btn btn-accent btn-full">حفظ إعدادات التسعير</button>
                 </form>
             </div>
@@ -474,6 +464,7 @@
                         <tr>
                             <th>رقم المعرف</th>
                             <th>اسم المستخدم</th>
+                            <th>كود الربط الدائم</th>
                             <th>الرصيد المتاح (جنيه)</th>
                             <th>تاريخ التسجيل</th>
                             <th>الإجراءات</th>
@@ -582,8 +573,6 @@
         globalSettings = s;
         document.getElementById('usdToEgpInput').value = s.usd_to_egp_rate || s.usd_equivalent_egp || 55;
         document.getElementById('fixedMarginInput').value = s.fixed_margin_egp || 0.10;
-        document.getElementById('instapayInput').value = s.recharge_instapay || '';
-        document.getElementById('vodafoneInput').value = s.recharge_vodafone || '';
 
         document.getElementById('statUsdRate').innerText = (s.usd_to_egp_rate || s.usd_equivalent_egp || 55).toFixed(2);
         document.getElementById('statMarginRate').innerText = (s.fixed_margin_egp || 0.10).toFixed(2);
@@ -595,12 +584,16 @@
         document.getElementById('modelSummarizerInput').value = s.model_summarizer || 'gemini-3.8-flash';
 
         document.getElementById('modelTtsInput').value = s.tts_model || 'gemini-3.8-flash-tts';
-        document.getElementById('voiceTtsInput').value = s.tts_voice || 'Puck';
+        document.getElementById('voiceTtsInput').value = s.tts_voice || 'Charon';
     }
 
     async function loadAdminData() {
         try {
             const res = await fetch('/portal-admin-secure/api/users');
+            if (res.status === 401) {
+                showLoginForm();
+                return;
+            }
             const data = await res.json();
             if (data.success) {
                 document.getElementById('statUsersCount').innerText = data.total_users;
@@ -615,7 +608,7 @@
     function renderUsersTable(users) {
         const tbody = document.getElementById('usersTableBody');
         if (!users || users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;">لا يوجد مستخدمون حتى الآن</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">لا يوجد مستخدمون حتى الآن</td></tr>';
             return;
         }
 
@@ -626,6 +619,7 @@
                 <tr>
                     <td>#${u.id}</td>
                     <td style="font-weight: 800; color: #fff;">${u.username}</td>
+                    <td><code style="background: rgba(16, 185, 129, 0.15); color: var(--accent); padding: 4px 8px; border-radius: 6px; font-weight: 800; letter-spacing: 1.5px; font-size: 14px;">${u.link_code || '-'}</code></td>
                     <td style="font-weight: 800; color: var(--accent); direction: ltr; text-align: right;">${u.balance_egp.toFixed(2)} ج.م</td>
                     <td>${dateStr}</td>
                     <td class="action-cell">
@@ -661,6 +655,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId, amount_egp: amount, description: desc })
             });
+            if (res.status === 401) {
+                alert('انتهت صلاحية جلسة الأدمن أو غير مصرح، يرجى إعادة إدخال كلمة المرور.');
+                showLoginForm();
+                return;
+            }
             const data = await res.json();
             if (data.success) {
                 closeTopupModal();
@@ -679,9 +678,7 @@
         const payload = {
             ...globalSettings,
             usd_to_egp_rate: parseFloat(document.getElementById('usdToEgpInput').value),
-            fixed_margin_egp: parseFloat(document.getElementById('fixedMarginInput').value),
-            recharge_instapay: document.getElementById('instapayInput').value.trim(),
-            recharge_vodafone: document.getElementById('vodafoneInput').value.trim()
+            fixed_margin_egp: parseFloat(document.getElementById('fixedMarginInput').value)
         };
 
         try {

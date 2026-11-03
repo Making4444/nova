@@ -510,12 +510,12 @@
 
         <div class="info-card">
             <div>
-                <h3>رقم نوفا الرسمي</h3>
-                <p>تواصل مع نوفا عبر تطبيق واتساب بعد ربط حسابك للبدء في طرح الأسئلة أو حل المسائل أو إنتاج الأصوات.</p>
+                <h3>كود الربط الدائم لحسابك</h3>
+                <p>اكتب هذا الكود في أي محادثة أو جروب مع رقم نوفا (<strong style="color: #fff;">01202172699</strong>) لربطه فوراً وبدء الاستخدام.</p>
             </div>
-            <div class="bot-num-badge">
-                <span>01202172699</span>
-                <span>📞 واتساب</span>
+            <div class="bot-num-badge" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4);">
+                <span id="accountLinkCodeDisplay" style="font-size: 24px; color: var(--accent); letter-spacing: 2px;">------</span>
+                <span style="color: #6ee7b7;">🔑 كود الحساب الثابت</span>
             </div>
         </div>
     </div>
@@ -584,11 +584,11 @@
         </div>
         <div class="modal-step">
             <div class="step-num">2</div>
-            <div>أرسل هذا الكود (6 أرقام) في رسالة خاصة إلى رقم نوفا <strong>01202172699</strong> أو اكتبه داخل الجروب الذي تريد ربطه.</div>
+            <div>أرسل هذا الكود الثابت في رسالة خاصة إلى رقم نوفا <strong>01202172699</strong> أو اكتبه داخل أي جروب تريد ربطه.</div>
         </div>
         <div class="modal-step">
             <div class="step-num">3</div>
-            <div>سيتم ربط الحساب فوراً وخصم الأسئلة من رصيدك في هذه اللوحة! (الكود صالح لمدة 15 دقيقة).</div>
+            <div>سيتم ربط الشات أو الجروب فوراً بحسابك وخصم الاستهلاك من رصيدك في هذه اللوحة! (الكود ثابت ودائم لحسابك ولا يتغير).</div>
         </div>
     </div>
 </div>
@@ -601,22 +601,18 @@
             <button class="btn-close" onclick="closeModal('rechargeModal')">&times;</button>
         </div>
 
-        <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
-            يمكنك شحن رصيدك عبر إحدى وسائل الدفع التالية، ثم تواصل مع الإدارة لإضافة الرصيد لحسابك فوراً:
-        </p>
-
-        <div class="payment-option">
-            <div class="payment-title">⚡ إنستاباي (Instapay)</div>
-            <div class="payment-detail" id="instapayDetail">جاري التحميل...</div>
-        </div>
-
-        <div class="payment-option">
-            <div class="payment-title">📱 فودافون كاش (Vodafone Cash)</div>
-            <div class="payment-detail" id="vodafoneDetail">جاري التحميل...</div>
-        </div>
-
-        <div style="background: rgba(99, 102, 241, 0.1); border-radius: 12px; padding: 14px; margin-top: 16px; font-size: 13px; color: #c7d2fe;">
-            💡 بعد التحويل، أرسل سكرين شوت التحويل مع اسم حسابك (<span id="userAccountName" style="font-weight: 800; color: #fff;"></span>) إلى واتساب <strong>01202172699</strong> لتأكيد الإيداع في ثوانٍ.
+        <div style="text-align: center; padding: 15px 0;">
+            <div style="font-size: 44px; margin-bottom: 12px;">💬</div>
+            <h4 style="font-size: 18px; margin-bottom: 10px; color: #fff;">شحن الرصيد عبر واتساب</h4>
+            <p style="color: var(--text-muted); font-size: 14px; line-height: 1.7; margin-bottom: 22px;">
+                لشحن رصيد حسابك، يرجى التواصل مباشرة مع الدعم الفني على واتساب عبر الرقم:<br>
+                <strong style="color: var(--accent); font-size: 22px; direction: ltr; display: inline-block; margin: 10px 0; font-family: monospace;">01041225902</strong><br>
+                وارسل لهم اسم حسابك (<strong style="color: #fff;" id="rechargeAccountName"></strong>) وسيتم شحن الرصيد لحسابك فوراً.
+            </p>
+            <a id="whatsappRechargeLink" href="https://wa.me/201041225902" target="_blank" class="btn btn-accent btn-full" style="text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; padding: 12px;">
+                <span>فتح محادثة واتساب للشحن (01041225902)</span>
+                <span>↗</span>
+            </a>
         </div>
     </div>
 </div>
@@ -633,12 +629,17 @@
             }
             const data = await res.json();
             if (data.success && data.user) {
+                currentCode = data.user.link_code || '';
                 document.getElementById('navUsername').innerText = data.user.username;
-                document.getElementById('userAccountName').innerText = data.user.username;
                 document.getElementById('balanceDisplay').innerText = data.user.balance_egp.toFixed(2);
-
-                document.getElementById('instapayDetail').innerText = data.recharge_instapay || 'instapay@user';
-                document.getElementById('vodafoneDetail').innerText = data.recharge_vodafone || '01202172699';
+                if (document.getElementById('accountLinkCodeDisplay')) {
+                    document.getElementById('accountLinkCodeDisplay').innerText = currentCode || '------';
+                }
+                if (document.getElementById('generatedCodeText')) {
+                    document.getElementById('generatedCodeText').innerText = currentCode || '------';
+                }
+                document.getElementById('rechargeAccountName').innerText = data.user.username;
+                document.getElementById('whatsappRechargeLink').href = `https://wa.me/201041225902?text=${encodeURIComponent('مرحباً، أريد شحن رصيد في نوفا لحسابي: ' + data.user.username)}`;
 
                 renderLinkedChats(data.linked_chats || []);
             }
@@ -705,20 +706,24 @@
         }
     }
 
-    async function generateLinkCode() {
-        try {
-            const res = await fetch('/api/link-code', { method: 'POST' });
-            const data = await res.json();
-            if (data.success && data.code) {
-                currentCode = data.code;
-                document.getElementById('generatedCodeText').innerText = data.code;
-                document.getElementById('linkModal').classList.add('active');
-            } else {
-                alert(data.error || 'تعذر إنشاء كود الربط');
-            }
-        } catch (err) {
-            alert('حدث خطأ في الاتصال');
+    function generateLinkCode() {
+        if (currentCode) {
+            document.getElementById('generatedCodeText').innerText = currentCode;
+            document.getElementById('linkModal').classList.add('active');
+            return;
         }
+        fetch('/api/link-code', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.code) {
+                    currentCode = data.code;
+                    document.getElementById('generatedCodeText').innerText = data.code;
+                    document.getElementById('linkModal').classList.add('active');
+                } else {
+                    alert(data.error || 'تعذر جلب كود الربط');
+                }
+            })
+            .catch(() => alert('تعذر جلب كود الربط'));
     }
 
     function openRechargeModal() {

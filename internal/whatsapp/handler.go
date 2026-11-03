@@ -447,14 +447,24 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 		}
 	}
 
-	// 2.9 Commercial Billing Link Code Interception (6-digit OTP e.g. 123456)
+	// 2.9 Commercial Billing Permanent Link Code Interception
+	codeToVerify := ""
 	candidateCode := strings.TrimSpace(cleanText)
-	if h.billingStore != nil && len(candidateCode) == 6 && isNumericString(candidateCode) {
-		linkedUser, linkErr := h.billingStore.VerifyAndLinkCode(candidateCode, chatID, chatType, senderName)
+	if len(candidateCode) == 6 && isNumericString(candidateCode) {
+		codeToVerify = candidateCode
+	} else if strings.HasPrefix(candidateCode, "ربط ") || strings.HasPrefix(candidateCode, "كود ") {
+		fields := strings.Fields(candidateCode)
+		if len(fields) >= 2 && len(fields[1]) == 6 && isNumericString(fields[1]) {
+			codeToVerify = fields[1]
+		}
+	}
+
+	if h.billingStore != nil && codeToVerify != "" {
+		linkedUser, linkErr := h.billingStore.VerifyAndLinkCode(codeToVerify, chatID, chatType, senderName)
 		if linkErr == nil && linkedUser != nil {
 			h.logger.Infof("Successfully linked chat %s (sender: %s) to user %s (#%d)", chatID, senderID, linkedUser.Username, linkedUser.ID)
 			fmt.Printf("\n[🔗 Account Linked] Chat %s linked to User %s (#%d) with balance: %.2f EGP\n", chatID, linkedUser.Username, linkedUser.ID, linkedUser.BalanceEGP)
-			replyMsg := fmt.Sprintf("🎉 تم ربط الحساب بنجاح!\nمرحباً بك يا %s في منصة نوفا الذكية.\nرصيدك الحالي: %.2f جنيه مصري.\n\nيمكنك الآن توجيه أسئلتك لنوفا مباشرة وستقوم بالرد عليك!", linkedUser.Username, linkedUser.BalanceEGP)
+			replyMsg := fmt.Sprintf("🎉 تم ربط هذا الشات بنجاح!\nمرحباً بك يا %s في منصة نوفا الذكية.\nرصيدك الحالي: %.2f جنيه مصري.\n\nيمكنك الآن توجيه أسئلتك لنوفا وسأقوم بالرد عليك فوراً!", linkedUser.Username, linkedUser.BalanceEGP)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			_ = h.SendMessage(ctx, chatID, replyMsg, messageID)
 			cancel()
