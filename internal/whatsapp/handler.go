@@ -853,25 +853,29 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 
 	// 5. Commercial Paywall Gate & Account Verification
 	var billingUser *billing.User
-	isBillingExempt := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699") || strings.Contains(senderID, "48387269337269") || strings.Contains(chatID, "48387269337269") || strings.Contains(senderID, "105012604760193")
-	if !isBillingExempt && h.billingStore != nil {
+	if h.billingStore != nil {
 		var bErr error
 		billingUser, bErr = h.billingStore.GetLinkedUserForChat(chatID)
 		if bErr != nil || billingUser == nil {
 			billingUser, bErr = h.billingStore.GetLinkedUserForChat(senderID)
 		}
-		if bErr != nil || billingUser == nil {
+	}
+
+	isOwner := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699") || strings.Contains(senderID, "48387269337269") || strings.Contains(chatID, "48387269337269") || strings.Contains(senderID, "105012604760193")
+
+	if billingUser == nil {
+		if !isOwner {
 			h.logger.Infof("Chat %s / Sender %s is not linked to any commercial billing account", chatID, senderID)
-			unlinkedNotice := "⚠️ عذراً، هذا الحساب أو الجروب غير مرتبط بحساب على منصة نوفا الذكية.\n\nمنصة نوفا أصبحت خدمة تجارية مدفوعة، للاستخدام:\n1. سجل حسابك عبر الرابط: https://nova.elyon.buzz\n2. اضغط على 'إضافة حساب أو جروب واتساب' للحصول على كود الربط.\n3. أرسل كود الربط المكون من 6 أرقام هنا وسيتم تفعيل حسابك فوراً!"
+			unlinkedNotice := "⚠️ عذراً، هذا الحساب أو الجروب غير مرتبط بحساب على منصة نوفا الذكية.\n\nمنصة نوفا أصبحت خدمة تجارية مدفوعة، للاستخدام:\n1. سجل حسابك عبر الرابط: https://nova.elyon.buzz\n2. انسخ 'كود الربط الدائم' الخاص بحسابك من اللوحة.\n3. أرسل كود الربط هنا في هذه المحادثة وسيتم تفعيل حسابك فوراً!"
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			_ = h.SendMessage(ctx, chatID, unlinkedNotice, messageID)
 			cancel()
 			return
 		}
-
+	} else {
 		if billingUser.BalanceEGP <= 0 {
 			h.logger.Infof("User %s (#%d) in chat %s has depleted balance (%.2f EGP)", billingUser.Username, billingUser.ID, chatID, billingUser.BalanceEGP)
-			depletedNotice := fmt.Sprintf("⚠️ عذراً يا %s، رصيد حسابك في منصة نوفا قد نفذ (%.2f جنيه).\n\nيرجى شحن رصيدك عبر المنصة لمتابعة الاستخدام:\nhttps://nova.elyon.buzz\n\nوسائل الدفع المتاحة: إنستاباي وفودافون كاش.", billingUser.Username, billingUser.BalanceEGP)
+			depletedNotice := fmt.Sprintf("⚠️ عذراً يا %s، رصيد حسابك في منصة نوفا قد نفذ (%.2f جنيه).\n\nيرجى شحن رصيدك عبر التواصل مع الدعم الفني على واتساب: 01041225902\nأو عبر المنصة: https://nova.elyon.buzz", billingUser.Username, billingUser.BalanceEGP)
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			_ = h.SendMessage(ctx, chatID, depletedNotice, messageID)
 			cancel()
@@ -916,7 +920,7 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 	}
 
 	// Deduct balance from linked commercial user
-	if !isBillingExempt && h.billingStore != nil && billingUser != nil {
+	if billingUser != nil && h.billingStore != nil {
 		costUSD := aiResp.CostUSD
 		if costUSD <= 0 && aiResp.TokensUsed > 0 {
 			costUSD = float64(aiResp.TokensUsed) * 0.0000003
@@ -1039,12 +1043,14 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 				}
 
 				// Deduct commercial balance for voice synthesis
-				if !isBillingExempt && h.billingStore != nil && billingUser != nil {
+				if billingUser != nil && h.billingStore != nil {
 					ttsCostUSD := float64(len([]rune(cleanVoiceText))) * 0.000005
 					ttsDesc := fmt.Sprintf("إنتاج رسالة صوتية فويس نوت (%d ثانية)", durSec)
 					dedEGP, remBal, dErr := h.billingStore.DeductBalance(billingUser.ID, chatID, ttsCostUSD, 0, ttsDesc)
 					if dErr == nil {
 						fmt.Printf("\n[🎙️ Billing Voice Note] Deducted %.4f EGP for Voice Note (%ds) from User #%d (%s). Remaining: %.2f EGP\n", dedEGP, durSec, billingUser.ID, billingUser.Username, remBal)
+					} else {
+						h.logger.Errorf("Failed to deduct voice note balance for user %d: %v", billingUser.ID, dErr)
 					}
 				}
 			} else {
