@@ -469,6 +469,10 @@ func (h *EventHandler) handleMessageEvent(evt *events.Message) {
 	if h.billingStore != nil && codeToVerify != "" {
 		linkedUser, linkErr := h.billingStore.VerifyAndLinkCode(codeToVerify, chatID, chatType, senderName)
 		if linkErr == nil && linkedUser != nil {
+			// If linking inside a group, automatically link the sender's personal ID as well so DM is recognized
+			if senderID != "" && senderID != chatID {
+				_, _ = h.billingStore.VerifyAndLinkCode(codeToVerify, senderID, "private", senderName)
+			}
 			h.logger.Infof("Successfully linked chat %s (sender: %s) to user %s (#%d)", chatID, senderID, linkedUser.Username, linkedUser.ID)
 			fmt.Printf("\n[🔗 Account Linked] Chat %s linked to User %s (#%d) with balance: %.2f EGP\n", chatID, linkedUser.Username, linkedUser.ID, linkedUser.BalanceEGP)
 			replyMsg := fmt.Sprintf("🎉 تم ربط هذا الشات بنجاح!\nمرحباً بك يا %s في منصة نوفا الذكية.\nرصيدك الحالي: %.2f جنيه مصري.\n\nيمكنك الآن توجيه أسئلتك لنوفا وسأقوم بالرد عليك فوراً!", linkedUser.Username, linkedUser.BalanceEGP)
@@ -868,7 +872,7 @@ func (h *EventHandler) processCoalescedTurn(lastEvt *events.Message, merged []pa
 		}
 	}
 
-	isOwner := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699") || strings.Contains(senderID, "48387269337269") || strings.Contains(chatID, "48387269337269") || strings.Contains(senderID, "105012604760193")
+	isOwner := isMaker || strings.Contains(senderID, "1202172699") || strings.Contains(chatID, "1202172699") || strings.Contains(senderID, "105012604760193")
 
 	if billingUser == nil {
 		if !isOwner {
